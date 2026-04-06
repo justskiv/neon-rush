@@ -9,5 +9,8 @@ neon-rush
 # OS
 .DS_Store
 
+# Docs
+docs/
+
 # Save data
 .neonrush/
