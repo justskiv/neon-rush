@@ -1,0 +1,35 @@
+version: "3"
+
+tasks:
+  run:
+    desc: Run the game
+    env:
+      CGO_CFLAGS: "-Wno-deprecated-declarations"
+    cmd: go run .
+
+  build:
+    desc: Build the game binary
+    cmd: go build -o bin/neon-rush .
+    sources:
+      - "*.go"
+      - go.mod
+    generates:
+      - bin/neon-rush
+
+  clean:
+    desc: Remove build artifacts
+    cmd: rm -rf bin/
+
+  tidy:
+    desc: Tidy go modules
+    cmd: go mod tidy
+
+  vet:
+    desc: Run go vet
+    cmd: go vet ./...
+
+  lint:
+    desc: Run all checks (vet + build)
+    cmds:
+      - task: vet
+      - task: build

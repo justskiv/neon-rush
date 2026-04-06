@@ -1,0 +1,13 @@
+# Binaries
+bin/
+neon-rush
+*.exe
+
+# IDE
+.idea/
+
+# OS
+.DS_Store
+
+# Save data
+.neonrush/
