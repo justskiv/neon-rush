@@ -9,16 +9,47 @@ tasks:
 
   build:
     desc: Build the game binary
-    cmd: go build -o bin/neon-rush .
+    cmd: go build -o build/neon-rush .
     sources:
       - "*.go"
       - go.mod
     generates:
-      - bin/neon-rush
+      - build/neon-rush
+
+  build:win:
+    desc: Build for Windows (x86_64)
+    env:
+      CGO_ENABLED: "0"
+      GOOS: windows
+      GOARCH: amd64
+    cmd: go build -o build/neon-rush_win.exe .
+    sources:
+      - "*.go"
+      - go.mod
+    generates:
+      - build/neon-rush_win.exe
+
+  build:web:
+    desc: Build for browser (WASM) — ready for GH Pages
+    env:
+      GOOS: js
+      GOARCH: wasm
+    cmds:
+      - go build -o build/web/neon-rush.wasm .
+      - cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" build/web/
+      - cp web/index.html build/web/index.html
+    sources:
+      - "*.go"
+      - go.mod
+      - web/index.html
+    generates:
+      - build/web/neon-rush.wasm
+      - build/web/wasm_exec.js
+      - build/web/index.html
 
   clean:
     desc: Remove build artifacts
-    cmd: rm -rf bin/
+    cmd: rm -rf build/
 
   tidy:
     desc: Tidy go modules

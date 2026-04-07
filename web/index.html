@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Rush</title>
+    <style>
+        * { margin: 0; padding: 0; }
+        html, body { height: 100%; background: #0a0a0a; overflow: hidden; }
+        #game { width: 100vw; height: 100vh; display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="game"></canvas>
+    <script src="wasm_exec.js"></script>
+    <script>
+        const go = new Go();
+        WebAssembly.instantiateStreaming(fetch("neon-rush.wasm"), go.importObject)
+            .then(result => go.run(result.instance));
+    </script>
+</body>
+</html>

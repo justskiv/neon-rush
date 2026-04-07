@@ -1,5 +1,6 @@
 # Binaries
 bin/
+build/
 neon-rush
 *.exe
 
@@ -11,6 +12,10 @@ neon-rush
 
 # Docs
 docs/
+CLAUDE.md
+
+# Task cache
+.task/
 
 # Save data
 .neonrush/
