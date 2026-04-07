@@ -49,6 +49,11 @@ func IsRestartPressed() bool {
 	return inpututil.IsKeyJustPressed(ebiten.KeyEnter)
 }
 
+// IsDriftPressed returns true while either Shift key is held.
+func IsDriftPressed() bool {
+	return ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)
+}
+
 // IsEscPressed returns true on the frame Escape is first pressed.
 func IsEscPressed() bool {
 	return inpututil.IsKeyJustPressed(ebiten.KeyEscape)

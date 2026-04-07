@@ -82,6 +82,21 @@ func drawSprite(screen, img *ebiten.Image, cx, cy float64) {
 	screen.DrawImage(img, op)
 }
 
+// drawSpriteRotated draws a sprite centered at (cx,cy) with rotation in radians.
+func drawSpriteRotated(screen, img *ebiten.Image, cx, cy, rotation float64) {
+	rs := renderScaleGlobal
+	op := &ebiten.DrawImageOptions{}
+	s := rs / SpriteScale
+	iw := float64(img.Bounds().Dx())
+	ih := float64(img.Bounds().Dy())
+	op.GeoM.Translate(-iw/2, -ih/2)
+	op.GeoM.Rotate(rotation)
+	op.GeoM.Scale(s, s)
+	op.GeoM.Translate(cx*rs, cy*rs)
+	op.Filter = ebiten.FilterLinear
+	screen.DrawImage(img, op)
+}
+
 // drawSpriteTinted draws a sprite with RGB color scaling (for damage tint etc).
 func drawSpriteTinted(screen, img *ebiten.Image, cx, cy float64, r, g, b float32) {
 	rs := renderScaleGlobal

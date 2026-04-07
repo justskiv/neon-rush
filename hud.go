@@ -23,6 +23,9 @@ type HUDData struct {
 	TickCount       int
 	Accelerating    bool
 	Braking         bool
+	DriftActive     bool
+	DriftHeat       float64 // 0..1
+	DriftOverheat   bool
 }
 
 // DrawHUD renders score, speed, fuel bar, combo, and nitro on screen.
@@ -103,6 +106,32 @@ func DrawHUD(screen *ebiten.Image, data HUDData) {
 		DrawRect(screen, 8, 32, 78, 14, color.RGBA{0xFF, 0x22, 0x00, 0x88})
 		DebugPrintScaled(screen, "! DAMAGED !", 10, 34)
 	}
+
+	// Drift heat bar (under the player car).
+	if data.DriftActive || data.DriftHeat > 0.01 {
+		bx := float64(ScreenWidth/2 - 20)
+		by := float64(PlayerStartY + PlayerHeight/2 + 8)
+		bw := 40.0
+		bh := 4.0
+		DrawRect(screen, bx, by, bw, bh, color.RGBA{0x33, 0x33, 0x33, 0xAA})
+		fill := data.DriftHeat * bw
+		heatClr := color.RGBA{0x00, 0xFF, 0x00, 0xCC}
+		if data.DriftHeat > 0.6 {
+			heatClr = color.RGBA{0xFF, 0xFF, 0x00, 0xCC}
+		}
+		if data.DriftHeat > 0.85 {
+			heatClr = color.RGBA{0xFF, 0x33, 0x00, 0xCC}
+		}
+		DrawRect(screen, bx, by, fill, bh, heatClr)
+	}
+	if data.DriftOverheat {
+		DebugPrintScaled(screen, "OVERHEAT!",
+			ScreenWidth/2-28, PlayerStartY+PlayerHeight/2+14)
+	} else if data.DriftActive {
+		DebugPrintScaled(screen, "DRIFT",
+			ScreenWidth/2-18, PlayerStartY+PlayerHeight/2+14)
+	}
+
 }
 
 // GameOverData holds all info for the game over screen.

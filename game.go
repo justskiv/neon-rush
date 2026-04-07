@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
 	"math/rand/v2"
 
@@ -329,6 +330,50 @@ func (g *Game) updatePlaying() {
 	g.decor.Update(effectiveSpeed, g.zone.CurrentZone, g.zone.ActivePalette)
 	g.player.Update(playerOff)
 
+	// Drift: Shift + direction at speed > 5.
+	if !g.lastChanceActive {
+		hInput := GetHorizontalInput()
+		if g.player.Drift.Update(&g.player, hInput, IsDriftPressed(), g.speed) {
+			g.speed *= DriftSpeedDrag
+		}
+	} else {
+		// Force-cancel drift during Last Chance.
+		g.player.Drift.Active = false
+		g.player.Drift.Rotation *= 0.85
+	}
+
+	// Drift scoring and effects.
+	if g.player.Drift.Active {
+		// Points per tick.
+		g.score += DriftScorePerTick * g.scoreState.ComboMultiplier
+		g.scoreState.ComboTimer = ComboDecayTicks
+
+		// Smoke from wheels every 3 ticks.
+		if g.tickCount%3 == 0 {
+			g.particles.EmitDriftSmoke(g.player.X,
+				g.player.Y+g.player.Height/2,
+				g.player.Drift.Direction)
+		}
+
+		// PERFECT DRIFT: 1 second of sustained drift in curve direction.
+		if g.player.Drift.DriftTicks == 60 && g.road.Curve != nil {
+			curveDir := g.road.Curve.CurveDirection()
+			if curveDir != 0 && curveDir*g.player.Drift.Direction > 0 {
+				bonus := DriftPerfectBonus * g.scoreState.ComboMultiplier
+				g.score += bonus
+				g.scoreState.FloatingTexts = append(g.scoreState.FloatingTexts,
+					FloatingText{
+						X: g.player.X - 60, Y: g.player.Y - 40,
+						Text: fmt.Sprintf("PERFECT DRIFT +%d", bonus),
+						TTL: 60, MaxTTL: 60,
+						Color: color.RGBA{0xFF, 0x00, 0xFF, 0xFF},
+						VY: -1.5, ScaleStart: 3.0, ScaleEnd: 1.5,
+						ScaleTicks: 12,
+					})
+			}
+		}
+	}
+
 	// Shoulder: penalty when driving off the road surface.
 	if g.player.IsOnShoulder(playerOff) {
 		g.speed *= 0.95
@@ -520,6 +565,9 @@ func (g *Game) updatePlaying() {
 	for _, car := range g.traffic {
 		res := CheckNearMiss(&g.player, car, &g.scoreState, g.nearMissThreshold, effectiveSpeed, g.offsetFn)
 		if res.Bonus > 0 {
+			if g.player.Drift.Active {
+				res.Bonus = int(float64(res.Bonus) * DriftNearMissMult)
+			}
 			g.score += res.Bonus
 			g.nearMissCount++
 			g.particles.EmitFlash(res.X, res.Y, car.X+g.offsetFn(car.Y), res.Tier)
@@ -632,6 +680,9 @@ func (g *Game) drawPlaying(dst *ebiten.Image) {
 		TickCount:       g.tickCount,
 		Accelerating:    g.accelerating,
 		Braking:         g.braking,
+		DriftActive:         g.player.Drift.Active,
+		DriftHeat:           g.player.Drift.HeatLevel,
+		DriftOverheat:       g.player.Drift.Overheated,
 	})
 	DrawFloatingTexts(dst, g.scoreState.FloatingTexts)
 }

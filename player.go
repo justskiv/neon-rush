@@ -22,6 +22,7 @@ type Player struct {
 	Blink           bool
 	Damaged         bool
 	RepairGlowTimer int
+	Drift           DriftState
 }
 
 func NewPlayer() Player {
@@ -104,22 +105,33 @@ func (p *Player) Draw(screen *ebiten.Image, sprites *SpriteCache, tick int, brak
 		return
 	}
 
+	rot := p.Drift.Rotation
+	carImg := sprites.PlayerCars[p.CarIndex]
+	glowImg := sprites.PlayerGlow[p.CarIndex]
+
 	if p.Damaged {
-		// Erratic glow: two irrational-frequency sins = glitchy flicker.
 		glowA := float32(0.3 + 0.25*math.Sin(float64(tick)*0.31) +
 			0.15*math.Sin(float64(tick)*0.73))
-		drawSpriteAlpha(screen, sprites.PlayerGlow[p.CarIndex], p.X, p.Y, glowA)
-
-		// Red-tinted car body.
-		drawSpriteTinted(screen, sprites.PlayerCars[p.CarIndex], p.X, p.Y, 1.0, 0.6, 0.6)
+		drawSpriteAlpha(screen, glowImg, p.X, p.Y, glowA)
+		if rot != 0 {
+			drawSpriteRotated(screen, carImg, p.X, p.Y, rot)
+		} else {
+			drawSpriteTinted(screen, carImg, p.X, p.Y, 1.0, 0.6, 0.6)
+		}
 	} else {
 		glowA := float32(0.5)
-		if p.RepairGlowTimer > 0 {
+		if p.Drift.Active {
+			glowA = 0.5 + 0.4*float32(p.Drift.HeatLevel)
+		} else if p.RepairGlowTimer > 0 {
 			glowA = 0.5 + 0.4*float32(p.RepairGlowTimer)/20.0
 			p.RepairGlowTimer--
 		}
-		drawSpriteAlpha(screen, sprites.PlayerGlow[p.CarIndex], p.X, p.Y, glowA)
-		drawSprite(screen, sprites.PlayerCars[p.CarIndex], p.X, p.Y)
+		drawSpriteAlpha(screen, glowImg, p.X, p.Y, glowA)
+		if rot != 0 {
+			drawSpriteRotated(screen, carImg, p.X, p.Y, rot)
+		} else {
+			drawSprite(screen, carImg, p.X, p.Y)
+		}
 	}
 
 	// Brake lights: two red rectangles at rear bumper.

@@ -68,6 +68,21 @@ func (rc *RoadCurve) Update(speed float64, tickCount int) {
 	rc.ensureSegmentsAhead(tickCount)
 }
 
+// CurveDirection returns the sign of the active curve's amplitude.
+// Positive = right, negative = left, 0 = straight.
+func (rc *RoadCurve) CurveDirection() float64 {
+	for i := rc.segIdx; i < len(rc.segments); i++ {
+		seg := &rc.segments[i]
+		if rc.distance >= seg.StartDist && rc.distance < seg.StartDist+seg.Length {
+			if seg.Amplitude > 0 {
+				return 1
+			}
+			return -1
+		}
+	}
+	return 0
+}
+
 // ScreenOffset returns the horizontal offset for a given screen Y position.
 // At PlayerStartY (bottom, where the player is): offset = current curve displacement.
 // At y=0 (top of screen): offset = future curve displacement (shows upcoming bend).

@@ -75,4 +75,17 @@ const (
 	// Last Chance.
 	LastChanceDuration  = 90  // 1.5 seconds
 	LastChanceSpeedMult = 0.2 // 20% speed during slow-mo
+
+	// Drift.
+	DriftMinSpeed       = 5.0
+	DriftLateralMult    = 2.0
+	DriftInertiaMax     = 18
+	DriftSpeedDrag      = 0.997
+	DriftOverheatMax    = 180  // 3s to overheat
+	DriftOverheatForced = 30   // loss of control ticks
+	DriftCooldownMult   = 2.0
+	DriftRotationMax    = 0.28 // ~16 degrees
+	DriftScorePerTick   = 5
+	DriftNearMissMult   = 3.0
+	DriftPerfectBonus   = 200
 )

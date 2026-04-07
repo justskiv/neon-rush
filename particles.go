@@ -337,6 +337,26 @@ func (ps *ParticleSystem) EmitExhaust(x, y, intensity float64) {
 	}
 }
 
+// EmitDriftSmoke creates smoke puffs from the rear wheels during drift.
+func (ps *ParticleSystem) EmitDriftSmoke(x, y, direction float64) {
+	for _, ox := range []float64{-10, 10} {
+		p := ps.spawn()
+		if p == nil {
+			return
+		}
+		ttl := 25 + rand.IntN(10)
+		*p = Particle{
+			Active: true, Type: ParticleSpark, Shape: ShapeCircle,
+			X: x + ox, Y: y,
+			VX: -direction*0.5 + (rand.Float64()-0.5)*0.3,
+			VY: 1.0 + rand.Float64()*1.5,
+			W: 4, H: 4, TTL: ttl, MaxTTL: ttl,
+			Color:   color.RGBA{0xAA, 0xAA, 0xAA, 0x60},
+			FadeOut: true, Shrink: true,
+		}
+	}
+}
+
 // EmitBrakeTrails creates brake trail particles behind the player.
 func (ps *ParticleSystem) EmitBrakeTrails(x, y float64) {
 	for _, offsetX := range []float64{-8, 8} {
