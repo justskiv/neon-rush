@@ -32,18 +32,30 @@ func DrawHUD(screen *ebiten.Image, data HUDData) {
 	DebugPrintScaled(screen, fmt.Sprintf("SCORE: %d", data.Score), 10, 4)
 	DebugPrintScaled(screen, fmt.Sprintf("SPD: %d", speedKmh), 10, 20)
 
-	// Combo.
+	// Combo: text + decaying timer bar underneath.
 	if data.ComboMultiplier > 1 {
 		comboText := fmt.Sprintf("x%d COMBO", data.ComboMultiplier)
 		cx := ScreenWidth/2 - 30
-		// Pulse: dim combo bar behind text.
-		barAlpha := uint8(180)
-		if data.ComboTimer > 0 && data.ComboTimer%20 < 10 {
-			barAlpha = 100
+		DebugPrintScaled(screen, comboText, cx, 2)
+
+		// Timer bar: shrinks from full to zero as combo decays.
+		timerFrac := float64(data.ComboTimer) / float64(ComboDecayTicks)
+		if timerFrac > 1 {
+			timerFrac = 1
 		}
-		DrawRect(screen, float64(cx)-4, 2, float64(len(comboText))*6+8, 14,
-			color.RGBA{0x20, 0x80, 0x10, barAlpha})
-		DebugPrintScaled(screen, comboText, cx, 4)
+		fullW := float64(len(comboText))*6 + 8
+		barW := fullW * timerFrac
+		// Color: green→yellow→red as timer runs out.
+		var barClr color.RGBA
+		switch {
+		case timerFrac > 0.5:
+			barClr = color.RGBA{0x20, 0xCC, 0x20, 0xCC}
+		case timerFrac > 0.25:
+			barClr = color.RGBA{0xCC, 0xCC, 0x00, 0xCC}
+		default:
+			barClr = color.RGBA{0xCC, 0x33, 0x00, 0xCC}
+		}
+		DrawRect(screen, float64(cx)-4, 16, barW, 3, barClr)
 	}
 
 	// Fuel bar.
