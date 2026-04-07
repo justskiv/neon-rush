@@ -22,6 +22,7 @@ type AudioSystem struct {
 	sfxNitro      []byte
 	sfxCombo      []byte
 	sfxRepair     []byte
+	sfxScrape     []byte
 }
 
 // NewAudioSystem creates the audio context and generates all sound effects.
@@ -48,11 +49,12 @@ func NewAudioSystem() *AudioSystem {
 			generateWooshTier(0.25, 5.0, []float64{1047, 1319}, 0.25, 0.40, 10000),
 			generateWooshTier(0.30, 4.0, []float64{1047, 1319, 1568}, 0.20, 0.40, 10000),
 		},
-		sfxCrash: generateCrash(),
-		sfxPickup:    generatePickup(),
-		sfxNitro:     generateNitroSFX(),
-		sfxCombo:     generateCombo(),
-		sfxRepair:    generateRepair(),
+		sfxCrash:  generateCrash(),
+		sfxPickup: generatePickup(),
+		sfxNitro:  generateNitroSFX(),
+		sfxCombo:  generateCombo(),
+		sfxRepair: generateRepair(),
+		sfxScrape: generateScrape(),
 	}
 }
 
@@ -78,6 +80,7 @@ func (a *AudioSystem) PlayWoosh(tier NearMissTier) {
 }
 func (a *AudioSystem) PlayCrash()  { a.playSFX(a.sfxCrash, 0.35) }
 func (a *AudioSystem) PlayRepair() { a.playSFX(a.sfxRepair, 0.30) }
+func (a *AudioSystem) PlayScrape() { a.playSFX(a.sfxScrape, 0.15) }
 func (a *AudioSystem) PlayPickup() { a.playSFX(a.sfxPickup, 0.30) }
 func (a *AudioSystem) PlayNitro()  { a.playSFX(a.sfxNitro, 0.25) }
 func (a *AudioSystem) PlayCombo()  { a.playSFX(a.sfxCombo, 0.20) }
@@ -99,7 +102,7 @@ type EngineSound struct {
 }
 
 func (e *EngineSound) SetSpeedMod(scrollSpeed float64) {
-	mod := 1.0 + (scrollSpeed-BaseScrollSpeed)/(MaxScrollSpeed-BaseScrollSpeed)*1.5
+	mod := 1.0 + (scrollSpeed-MinSpeed)/(MaxScrollSpeed-MinSpeed)*1.5
 	if mod < 0.5 {
 		mod = 0.5
 	}
@@ -278,6 +281,27 @@ func generateRepair() []byte {
 		}
 
 		sample := (root*0.4 + third*0.4 + fifth*0.4 + sparkle) * env
+		writeSample16(buf, i, sample)
+	}
+	return buf
+}
+
+func generateScrape() []byte {
+	dur := 0.3
+	n := int(dur * sampleRate)
+	buf := make([]byte, n*4)
+	var lpState float64
+	for i := range n {
+		t := float64(i) / float64(n)
+		env := (1.0 - t) * 0.6
+		// Filtered noise: low rumble.
+		noise := rand.Float64()*2 - 1
+		rc := 1.0 / (2.0 * math.Pi * 200.0)
+		a := 1.0 / (1.0 + rc*float64(sampleRate))
+		lpState += a * (noise - lpState)
+		// Low tone for grit.
+		tone := math.Sin(2*math.Pi*80*float64(i)/float64(sampleRate)) * 0.3
+		sample := (lpState*0.5 + tone) * env
 		writeSample16(buf, i, sample)
 	}
 	return buf

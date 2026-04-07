@@ -117,15 +117,16 @@ func isItemLaneBlocked(items []*Item, traffic []*TrafficCar, cx float64) bool {
 }
 
 // UpdateItems moves items down, applies magnetism, and removes off-screen ones.
-func UpdateItems(items []*Item, scrollSpeed, playerX, playerY float64) []*Item {
+func UpdateItems(items []*Item, scrollSpeed, playerX, playerY float64, offsetFn func(float64) float64) []*Item {
 	n := 0
 	for _, it := range items {
 		it.TickAge++
 		it.Y += scrollSpeed
 
 		// Magnetism: pull pickups toward player when close (not oil).
+		// Item X is in road-space; compare to player using per-Y offset.
 		if it.Type != ItemOil {
-			dx := playerX - it.X
+			dx := playerX - (it.X + offsetFn(it.Y))
 			dy := playerY - it.Y
 			dist := math.Sqrt(dx*dx + dy*dy)
 			if dist < 40 && dist > 1 {
@@ -145,12 +146,13 @@ func UpdateItems(items []*Item, scrollSpeed, playerX, playerY float64) []*Item {
 }
 
 // CheckPlayerItemCollision splits items into picked-up and remaining.
-func CheckPlayerItemCollision(p *Player, items []*Item) ([]*Item, []*Item) {
+// offsetFn returns per-Y offset to shift item X into screen space.
+func CheckPlayerItemCollision(p *Player, items []*Item, offsetFn func(float64) float64) ([]*Item, []*Item) {
 	pb := p.Bounds()
 	var picked []*Item
 	n := 0
 	for _, it := range items {
-		ib := NewRect(it.X, it.Y, it.Width, it.Height)
+		ib := NewRect(it.X+offsetFn(it.Y), it.Y, it.Width, it.Height)
 		if CheckCollision(pb, ib) {
 			picked = append(picked, it)
 		} else {
@@ -164,16 +166,16 @@ func CheckPlayerItemCollision(p *Player, items []*Item) ([]*Item, []*Item) {
 	return picked, items[:n]
 }
 
-func (it *Item) Draw(screen *ebiten.Image, sprites *SpriteCache) {
+func (it *Item) Draw(screen *ebiten.Image, sprites *SpriteCache, offsetFn func(float64) float64) {
+	dx := it.X + offsetFn(it.Y)
 	switch it.Type {
 	case ItemFuel:
 		glowAlpha := float32(0.3 + 0.2*math.Sin(float64(it.TickAge)*0.1))
-		drawSpriteAlpha(screen, sprites.FuelGlow, it.X, it.Y, glowAlpha)
-		drawSprite(screen, sprites.FuelCan, it.X, it.Y)
+		drawSpriteAlpha(screen, sprites.FuelGlow, dx, it.Y, glowAlpha)
+		drawSprite(screen, sprites.FuelCan, dx, it.Y)
 	case ItemNitro:
 		glowAlpha := float32(0.3 + 0.2*math.Sin(float64(it.TickAge)*0.12))
-		drawSpriteAlpha(screen, sprites.NitroGlow, it.X, it.Y, glowAlpha)
-		// Slight oscillating rotation.
+		drawSpriteAlpha(screen, sprites.NitroGlow, dx, it.Y, glowAlpha)
 		img := sprites.NitroItem
 		rs := renderScaleGlobal
 		op := &ebiten.DrawImageOptions{}
@@ -181,18 +183,18 @@ func (it *Item) Draw(screen *ebiten.Image, sprites *SpriteCache) {
 		op.GeoM.Translate(-float64(img.Bounds().Dx())/2, -float64(img.Bounds().Dy())/2)
 		op.GeoM.Scale(s, s)
 		op.GeoM.Rotate(math.Sin(float64(it.TickAge)*0.1) * 0.09)
-		op.GeoM.Translate(it.X*rs, it.Y*rs)
+		op.GeoM.Translate(dx*rs, it.Y*rs)
 		op.Filter = ebiten.FilterLinear
 		screen.DrawImage(img, op)
 	case ItemOil:
-		drawSprite(screen, sprites.OilSpill, it.X, it.Y)
+		drawSprite(screen, sprites.OilSpill, dx, it.Y)
 	case ItemCoin:
 		frame := (it.TickAge / 8) % 4
-		drawSprite(screen, sprites.Coin[frame], it.X, it.Y)
+		drawSprite(screen, sprites.Coin[frame], dx, it.Y)
 	case ItemRepair:
 		glowAlpha := float32(0.3 + 0.25*math.Sin(float64(it.TickAge)*0.15))
-		drawSpriteAlpha(screen, sprites.RepairGlow, it.X, it.Y, glowAlpha)
-		drawSprite(screen, sprites.RepairKit, it.X, it.Y)
+		drawSpriteAlpha(screen, sprites.RepairGlow, dx, it.Y, glowAlpha)
+		drawSprite(screen, sprites.RepairKit, dx, it.Y)
 	}
 }
 

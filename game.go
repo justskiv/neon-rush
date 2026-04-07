@@ -33,7 +33,7 @@ type Game struct {
 	fuelSpawnTimer int
 
 	score       int
-	scrollSpeed float64
+	speed       float64
 	tickCount   int
 	fuel        float64
 
@@ -47,8 +47,10 @@ type Game struct {
 	decor      DecorSystem
 	scoreState ScoreState
 	particles  ParticleSystem
-	speedLines SpeedLineSystem
-	braking    bool
+	speedLines   SpeedLineSystem
+	braking      bool
+	accelerating bool
+	offsetFn     func(float64) float64 // per-row curve offset
 
 	audio          *AudioSystem
 	sprites        *SpriteCache
@@ -93,7 +95,7 @@ func NewGame() *Game {
 		traffic:         make([]*TrafficCar, 0, 32),
 		items:           make([]*Item, 0, 16),
 		spawnInterval:   TrafficSpawnRate,
-		scrollSpeed:     BaseScrollSpeed,
+		speed:           MinSpeed,
 		fuel:            FuelMax,
 		fuelSpawnTimer:  randRange(5*TPS, 8*TPS),
 		nitroSpawnTimer: randRange(30*TPS, 60*TPS),
@@ -286,30 +288,85 @@ func (g *Game) updatePlaying() {
 		return
 	}
 
-	// Increase base speed.
-	g.scrollSpeed += SpeedIncrement
-	if g.scrollSpeed > MaxScrollSpeed {
-		g.scrollSpeed = MaxScrollSpeed
-	}
-
-	g.audio.UpdateEngineSpeed(g.scrollSpeed)
-
-	// Apply speed modifier from vertical input.
+	// Player speed control: gas / brake / coast.
 	vertical := GetVerticalInput()
-	speedMod := 1.0
-	if vertical < 0 {
-		speedMod = SpeedBoostFactor
-	} else if vertical > 0 {
-		speedMod = SpeedBrakeFactor
+	switch {
+	case vertical < 0: // gas
+		g.speed += g.activeCar.Acceleration
+	case vertical > 0: // brake
+		g.speed -= g.activeCar.BrakeForce
+	default: // coast
+		g.speed -= Deceleration
 	}
-	effectiveSpeed := g.scrollSpeed * speedMod
+	if g.speed < MinSpeed {
+		g.speed = MinSpeed
+	}
+	if g.speed > g.activeCar.MaxSpeed {
+		g.speed = g.activeCar.MaxSpeed
+	}
+
+	g.accelerating = vertical < 0
+	g.braking = vertical > 0
+
+	g.audio.UpdateEngineSpeed(g.speed)
+
+	effectiveSpeed := g.speed
 	if g.lastChanceActive {
 		effectiveSpeed *= LastChanceSpeedMult
 	}
 
-	g.road.Update(effectiveSpeed)
+	g.road.Update(effectiveSpeed, g.tickCount)
+	if g.road.Curve != nil {
+		speed := effectiveSpeed
+		curve := g.road.Curve
+		g.offsetFn = func(y float64) float64 {
+			return curve.ScreenOffset(y, speed)
+		}
+	} else {
+		g.offsetFn = func(float64) float64 { return 0 }
+	}
+	playerOff := g.offsetFn(PlayerStartY)
 	g.decor.Update(effectiveSpeed, g.zone.CurrentZone, g.zone.ActivePalette)
-	g.player.Update()
+	g.player.Update(playerOff)
+
+	// Shoulder: penalty when driving off the road surface.
+	if g.player.IsOnShoulder(playerOff) {
+		g.speed *= 0.95
+		if g.tickCount%4 == 0 {
+			g.particles.EmitSparks(g.player.X, g.player.Y+g.player.Height/2, 2)
+		}
+		if g.tickCount%15 == 0 {
+			g.audio.PlayScrape()
+		}
+		if g.shake.intensity < 1 {
+			g.shake = ScreenShake{intensity: 1, decay: 0.9, frequency: 2}
+		}
+	}
+
+	// Barrier collision: hitting the guardrail triggers crash cascade.
+	if g.player.IsAtBarrier(playerOff) && !g.nitroActive && g.nitroGrace <= 0 && !g.lastChanceActive {
+		if g.lastChanceAvailable {
+			g.lastChanceAvailable = false
+			g.lastChanceActive = true
+			g.lastChanceTimer = LastChanceDuration
+			g.player.Damaged = true
+			g.freezeTimer = FreezeFrameCollision
+			g.shake = ShakeCollision()
+			g.particles.EmitCollisionBurst(g.player.X, g.player.Y, g.activeCar.Color)
+			g.audio.PlayCrash()
+			g.scoreState.ComboMultiplier = 1
+			g.scoreState.ComboTimer = 0
+		} else if !g.ghostShieldActive {
+			g.particles.EmitCollisionBurst(g.player.X, g.player.Y, g.activeCar.Color)
+			g.shake = ShakeCollision()
+			g.freezeTimer = FreezeFrameCollision
+			g.scoreState.ComboMultiplier = 1
+			g.scoreState.ComboTimer = 0
+			g.enterGameOver()
+			return
+		}
+	}
+
 	g.speedLines.Update(effectiveSpeed, MaxScrollSpeed, g.nitroActive)
 
 	// Rain particles.
@@ -320,7 +377,7 @@ func (g *Game) updatePlaying() {
 	// Spawn traffic.
 	g.spawnTimer--
 	if g.spawnTimer <= 0 {
-		if car := SpawnTraffic(g.traffic, effectiveSpeed, g.tickCount); car != nil {
+		if car := SpawnTraffic(g.traffic, g.tickCount); car != nil {
 			g.traffic = append(g.traffic, car)
 		}
 		base := max(MinSpawnRate, TrafficSpawnRate-g.tickCount/TPS)
@@ -401,13 +458,13 @@ func (g *Game) updatePlaying() {
 	}
 
 	var overtakeScore int
-	g.traffic, overtakeScore = UpdateTraffic(g.traffic, effectiveSpeed, g.player.X)
+	g.traffic, overtakeScore = UpdateTraffic(g.traffic, effectiveSpeed, g.player.X-playerOff)
 	g.score += overtakeScore
 
-	g.items = UpdateItems(g.items, effectiveSpeed, g.player.X, g.player.Y)
+	g.items = UpdateItems(g.items, effectiveSpeed, g.player.X, g.player.Y, g.offsetFn)
 
 	// Pick up items.
-	picked, remaining := CheckPlayerItemCollision(&g.player, g.items)
+	picked, remaining := CheckPlayerItemCollision(&g.player, g.items, g.offsetFn)
 	g.items = remaining
 	for _, it := range picked {
 		switch it.Type {
@@ -461,11 +518,11 @@ func (g *Game) updatePlaying() {
 
 	// Near-miss checks.
 	for _, car := range g.traffic {
-		res := CheckNearMiss(&g.player, car, &g.scoreState, g.nearMissThreshold, effectiveSpeed)
+		res := CheckNearMiss(&g.player, car, &g.scoreState, g.nearMissThreshold, effectiveSpeed, g.offsetFn)
 		if res.Bonus > 0 {
 			g.score += res.Bonus
 			g.nearMissCount++
-			g.particles.EmitFlash(res.X, res.Y, car.X, res.Tier)
+			g.particles.EmitFlash(res.X, res.Y, car.X+g.offsetFn(car.Y), res.Tier)
 			g.audio.PlayWoosh(res.Tier)
 			g.chromatic = NewChromaticAberration(res.Tier)
 			if g.scoreState.ComboMultiplier > g.peakCombo {
@@ -476,8 +533,13 @@ func (g *Game) updatePlaying() {
 	}
 	UpdateScoreState(&g.scoreState)
 
+	// Exhaust particles when accelerating.
+	if g.accelerating && g.tickCount%3 == 0 {
+		g.particles.EmitExhaust(g.player.X, g.player.Y+g.player.Height/2,
+			g.speed/g.activeCar.MaxSpeed)
+	}
+
 	// Brake trail particles.
-	g.braking = vertical > 0
 	if g.braking && g.tickCount%3 == 0 {
 		g.particles.EmitBrakeTrails(g.player.X, g.player.Y+g.player.Height/2)
 	}
@@ -497,7 +559,7 @@ func (g *Game) updatePlaying() {
 	g.particles.Update()
 
 	// Check collisions: nitro/grace → ghost shield → Last Chance → game over.
-	if cr := CheckPlayerTrafficCollision(&g.player, g.traffic); cr.Hit && !g.nitroActive && g.nitroGrace <= 0 && !g.lastChanceActive {
+	if cr := CheckPlayerTrafficCollision(&g.player, g.traffic, g.offsetFn); cr.Hit && !g.nitroActive && g.nitroGrace <= 0 && !g.lastChanceActive {
 		if g.ghostShieldActive {
 			g.ghostShieldActive = false
 			g.particles.EmitFlash(g.player.X, g.player.Y, cr.HitX, TierClose)
@@ -527,18 +589,18 @@ func (g *Game) updatePlaying() {
 }
 
 func (g *Game) drawPlaying(dst *ebiten.Image) {
-	g.road.Draw(dst, g.zone.ActivePalette, g.zone.CurrentZone)
-	g.decor.Draw(dst, g.zone.ActivePalette, g.sprites)
+	g.road.Draw(dst, g.zone.ActivePalette, g.zone.CurrentZone, g.offsetFn)
+	g.decor.Draw(dst, g.zone.ActivePalette, g.sprites, g.offsetFn)
 
 	for _, it := range g.items {
-		it.Draw(dst, g.sprites)
+		it.Draw(dst, g.sprites, g.offsetFn)
 	}
 
 	for _, car := range g.traffic {
-		car.Draw(dst, g.sprites)
+		car.Draw(dst, g.sprites, g.offsetFn)
 	}
 
-	g.player.Draw(dst, g.sprites, g.tickCount)
+	g.player.Draw(dst, g.sprites, g.tickCount, g.braking)
 	g.particles.Draw(dst)
 	g.speedLines.Draw(dst)
 
@@ -546,7 +608,7 @@ func (g *Game) drawPlaying(dst *ebiten.Image) {
 		DrawFogOverlay(dst)
 	}
 
-	DrawVignette(dst, g.scrollSpeed)
+	DrawVignette(dst, g.speed)
 
 	// Damaged state overlay.
 	if g.lastChanceActive {
@@ -559,7 +621,7 @@ func (g *Game) drawPlaying(dst *ebiten.Image) {
 
 	DrawHUD(dst, HUDData{
 		Score:           g.score,
-		ScrollSpeed:     g.scrollSpeed,
+		ScrollSpeed:     g.speed,
 		Fuel:            g.fuel,
 		NitroCharges:    g.nitroCharges,
 		NitroActive:     g.nitroActive,
@@ -568,6 +630,8 @@ func (g *Game) drawPlaying(dst *ebiten.Image) {
 		Damaged:         g.player.Damaged,
 		RepairFlash:     g.player.RepairGlowTimer,
 		TickCount:       g.tickCount,
+		Accelerating:    g.accelerating,
+		Braking:         g.braking,
 	})
 	DrawFloatingTexts(dst, g.scoreState.FloatingTexts)
 }
@@ -706,11 +770,12 @@ func (g *Game) reset() {
 	case SpecialGhostShield:
 		g.ghostShieldActive = true
 	}
-	g.road = NewRoad()
+	g.road = NewRoadWithCurve()
+	g.offsetFn = func(float64) float64 { return 0 }
 	g.traffic = g.traffic[:0]
 	g.items = g.items[:0]
 	g.score = 0
-	g.scrollSpeed = BaseScrollSpeed
+	g.speed = MinSpeed
 	g.tickCount = 0
 	g.spawnTimer = 0
 	g.spawnInterval = TrafficSpawnRate
@@ -725,6 +790,7 @@ func (g *Game) reset() {
 	g.scoreState = NewScoreState()
 	g.particles = NewParticleSystem()
 	g.braking = false
+	g.accelerating = false
 	g.shake = ScreenShake{}
 	g.chromatic = ChromaticAberration{}
 	g.freezeTimer = 0

@@ -32,13 +32,17 @@ type CollisionResult struct {
 }
 
 // CheckPlayerTrafficCollision checks if the player collides with any NPC.
-func CheckPlayerTrafficCollision(p *Player, traffic []*TrafficCar) CollisionResult {
+// offsetFn returns per-Y horizontal offset (NPC X is in road-space, player in screen-space).
+func CheckPlayerTrafficCollision(p *Player, traffic []*TrafficCar, offsetFn func(float64) float64) CollisionResult {
 	pb := p.Bounds()
 	for _, c := range traffic {
-		if CheckCollision(pb, c.Bounds()) {
+		cb := c.Bounds()
+		off := offsetFn(c.Y)
+		cb.X += off
+		if CheckCollision(pb, cb) {
 			return CollisionResult{
 				Hit:     true,
-				HitX:    (p.X + c.X) / 2,
+				HitX:    (p.X + c.X + off) / 2,
 				HitY:    (p.Y + c.Y) / 2,
 				CarType: c.CarType,
 			}

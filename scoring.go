@@ -68,8 +68,8 @@ var tierLabels = [5]string{
 }
 
 // CheckNearMiss checks if an NPC car has passed the player closely enough.
-// scrollSpeed is used for the speed multiplier.
-func CheckNearMiss(p *Player, car *TrafficCar, state *ScoreState, threshold, scrollSpeed float64) NearMissResult {
+// scrollSpeed is used for the speed multiplier. offsetFn returns per-Y offset.
+func CheckNearMiss(p *Player, car *TrafficCar, state *ScoreState, threshold, scrollSpeed float64, offsetFn func(float64) float64) NearMissResult {
 	if car.NearMissChecked {
 		return NearMissResult{}
 	}
@@ -80,7 +80,7 @@ func CheckNearMiss(p *Player, car *TrafficCar, state *ScoreState, threshold, scr
 
 	car.NearMissChecked = true
 
-	dist := math.Max(0, math.Abs(p.X-car.X)-(p.Width+car.Width)/2)
+	dist := math.Max(0, math.Abs(p.X-(car.X+offsetFn(car.Y)))-(p.Width+car.Width)/2)
 	if dist >= threshold {
 		return NearMissResult{}
 	}

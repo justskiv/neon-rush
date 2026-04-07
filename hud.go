@@ -19,8 +19,10 @@ type HUDData struct {
 	ComboMultiplier int
 	ComboTimer      int
 	Damaged         bool
-	RepairFlash     int // ticks remaining for "ИСПРАВЕН" flash
+	RepairFlash     int // ticks remaining for repair flash
 	TickCount       int
+	Accelerating    bool
+	Braking         bool
 }
 
 // DrawHUD renders score, speed, fuel bar, combo, and nitro on screen.
@@ -30,7 +32,14 @@ func DrawHUD(screen *ebiten.Image, data HUDData) {
 
 	speedKmh := int(data.ScrollSpeed * 30)
 	DebugPrintScaled(screen, fmt.Sprintf("SCORE: %d", data.Score), 10, 4)
-	DebugPrintScaled(screen, fmt.Sprintf("SPD: %d", speedKmh), 10, 20)
+
+	speedLabel := fmt.Sprintf("SPD: %d", speedKmh)
+	if data.Accelerating {
+		speedLabel += " GAS"
+	} else if data.Braking {
+		speedLabel += " BRK"
+	}
+	DebugPrintScaled(screen, speedLabel, 10, 20)
 
 	// Combo: text + decaying timer bar underneath.
 	if data.ComboMultiplier > 1 {

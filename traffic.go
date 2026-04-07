@@ -31,8 +31,18 @@ type TrafficCar struct {
 	TickAge int
 }
 
+// baseNPCSpeed returns the NPC base speed for the given tick.
+// It ramps from BaseScrollSpeed to 80% of MaxScrollSpeed over 180 seconds.
+func baseNPCSpeed(tickCount int) float64 {
+	t := float64(tickCount) / float64(180*TPS)
+	if t > 1.0 {
+		t = 1.0
+	}
+	return BaseScrollSpeed + t*(MaxScrollSpeed*0.8-BaseScrollSpeed)
+}
+
 // SpawnTraffic creates a new NPC on a random free lane.
-func SpawnTraffic(existing []*TrafficCar, scrollSpeed float64, tickCount int) *TrafficCar {
+func SpawnTraffic(existing []*TrafficCar, tickCount int) *TrafficCar {
 	ct, def := chooseCarType(tickCount)
 
 	start := rand.IntN(LaneCount)
@@ -52,7 +62,7 @@ func SpawnTraffic(existing []*TrafficCar, scrollSpeed float64, tickCount int) *T
 			CarType: ct,
 		}
 
-		car.Speed = scrollSpeed * def.SpeedRatio
+		car.Speed = baseNPCSpeed(tickCount) * def.SpeedRatio
 		switch ct {
 		case CarTypeSedan:
 			car.ColorVariant = rand.IntN(len(SedanColors))
@@ -285,39 +295,37 @@ func updateSportLaneChange(c *TrafficCar) {
 	}
 }
 
-func (c *TrafficCar) Draw(screen *ebiten.Image, sprites *SpriteCache) {
+func (c *TrafficCar) Draw(screen *ebiten.Image, sprites *SpriteCache, offsetFn func(float64) float64) {
+	dx := c.X + offsetFn(c.Y)
 	switch c.CarType {
 	case CarTypeSedan:
-		drawSprite(screen, sprites.TrafficSedan[c.ColorVariant], c.X, c.Y)
+		drawSprite(screen, sprites.TrafficSedan[c.ColorVariant], dx, c.Y)
 
 	case CarTypeTruck:
-		drawSprite(screen, sprites.TrafficTruck[c.ColorVariant], c.X, c.Y)
+		drawSprite(screen, sprites.TrafficTruck[c.ColorVariant], dx, c.Y)
 
 	case CarTypeSport:
-		drawSprite(screen, sprites.TrafficSport[c.ColorVariant], c.X, c.Y)
-		// Blinking turn signal when changing lane.
+		drawSprite(screen, sprites.TrafficSport[c.ColorVariant], dx, c.Y)
 		if c.ChangingLane && c.TickAge%10 < 5 {
-			sigX := c.X - c.Width/2 - 1
+			sigX := dx - c.Width/2 - 1
 			if c.TargetX > c.X {
-				sigX = c.X + c.Width/2 - 2
+				sigX = dx + c.Width/2 - 2
 			}
 			drawSprite(screen, sprites.TurnSignal, sigX, c.Y)
 		}
 
 	case CarTypePolice:
-		drawSprite(screen, sprites.TrafficPolice, c.X, c.Y)
-		// Animated siren on top.
+		drawSprite(screen, sprites.TrafficPolice, dx, c.Y)
 		sirenFrame := (c.TickAge / 8) % 2
-		drawSprite(screen, sprites.PoliceSiren[sirenFrame], c.X, c.Y-c.Height/2+5)
+		drawSprite(screen, sprites.PoliceSiren[sirenFrame], dx, c.Y-c.Height/2+5)
 
 	case CarTypeOncoming:
-		// Headlight cone under the car.
 		alpha := float32(0.6)
 		if c.TickAge%30 < 5 {
 			alpha = 0.3
 		}
-		drawSpriteAlpha(screen, sprites.HeadlightCone, c.X, c.Y+c.Height/2+18, alpha)
-		drawSprite(screen, sprites.TrafficOncoming, c.X, c.Y)
+		drawSpriteAlpha(screen, sprites.HeadlightCone, dx, c.Y+c.Height/2+18, alpha)
+		drawSprite(screen, sprites.TrafficOncoming, dx, c.Y)
 	}
 }
 

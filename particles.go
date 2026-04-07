@@ -318,6 +318,25 @@ func nitroFlameColor() color.RGBA {
 	return color.RGBA{0xFF, 0xDD, 0x00, 0xFF}
 }
 
+// EmitExhaust creates a small exhaust puff behind the player when accelerating.
+// intensity is 0..1 (speed / maxSpeed).
+func (ps *ParticleSystem) EmitExhaust(x, y, intensity float64) {
+	p := ps.spawn()
+	if p == nil {
+		return
+	}
+	size := 2.0 + intensity*2.0
+	a := uint8(60 + intensity*80)
+	ttl := 8 + int(intensity*6)
+	*p = Particle{
+		Active: true, Type: ParticleSpark, Shape: ShapeCircle,
+		X: x + (rand.Float64()*4 - 2), Y: y,
+		VX: (rand.Float64() - 0.5) * 0.3, VY: 1.0 + rand.Float64()*1.5,
+		W: size, H: size, TTL: ttl, MaxTTL: ttl,
+		Color: color.RGBA{0xCC, 0x99, 0x55, a}, FadeOut: true, Shrink: true,
+	}
+}
+
 // EmitBrakeTrails creates brake trail particles behind the player.
 func (ps *ParticleSystem) EmitBrakeTrails(x, y float64) {
 	for _, offsetX := range []float64{-8, 8} {

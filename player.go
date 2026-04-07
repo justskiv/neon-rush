@@ -42,13 +42,13 @@ func newPlayerFromCar(car PlayerCarDef) Player {
 		Width:        PlayerWidth,
 		Height:       PlayerHeight,
 		Color:        car.Color,
-		MoveSpeed:    PlayerMoveSpeed * car.ManeuverMod,
-		Acceleration: PlayerAcceleration * car.ManeuverMod,
+		MoveSpeed:    PlayerMoveSpeed * car.Handling,
+		Acceleration: PlayerAcceleration * car.Handling,
 		CarIndex:     idx,
 	}
 }
 
-func (p *Player) Update() {
+func (p *Player) Update(curveOffset float64) {
 	input := GetHorizontalInput()
 
 	p.LateralVelocity += input * p.Acceleration
@@ -69,18 +69,37 @@ func (p *Player) Update() {
 
 	p.X += p.LateralVelocity
 
+	// Barrier: hard stop at road edge + 30px.
 	halfW := p.Width / 2
-	if p.X-halfW < RoadLeft {
-		p.X = RoadLeft + halfW
+	barrierL := float64(RoadLeft) + curveOffset - 30
+	barrierR := float64(RoadRight) + curveOffset + 30
+	if p.X-halfW < barrierL {
+		p.X = barrierL + halfW
 		p.LateralVelocity = 0
 	}
-	if p.X+halfW > RoadRight {
-		p.X = RoadRight - halfW
+	if p.X+halfW > barrierR {
+		p.X = barrierR - halfW
 		p.LateralVelocity = 0
 	}
 }
 
-func (p *Player) Draw(screen *ebiten.Image, sprites *SpriteCache, tick int) {
+// IsOnShoulder returns true if the player is outside the road surface.
+func (p *Player) IsOnShoulder(curveOffset float64) bool {
+	halfW := p.Width / 2
+	roadL := float64(RoadLeft) + curveOffset
+	roadR := float64(RoadRight) + curveOffset
+	return p.X-halfW < roadL || p.X+halfW > roadR
+}
+
+// IsAtBarrier returns true if the player is pressed against the barrier.
+func (p *Player) IsAtBarrier(curveOffset float64) bool {
+	halfW := p.Width / 2
+	barrierL := float64(RoadLeft) + curveOffset - 30
+	barrierR := float64(RoadRight) + curveOffset + 30
+	return p.X-halfW <= barrierL+1 || p.X+halfW >= barrierR-1
+}
+
+func (p *Player) Draw(screen *ebiten.Image, sprites *SpriteCache, tick int, braking bool) {
 	if p.Blink {
 		return
 	}
@@ -101,6 +120,14 @@ func (p *Player) Draw(screen *ebiten.Image, sprites *SpriteCache, tick int) {
 		}
 		drawSpriteAlpha(screen, sprites.PlayerGlow[p.CarIndex], p.X, p.Y, glowA)
 		drawSprite(screen, sprites.PlayerCars[p.CarIndex], p.X, p.Y)
+	}
+
+	// Brake lights: two red rectangles at rear bumper.
+	if braking {
+		a := uint8(200)
+		clr := color.RGBA{0xFF, 0x22, 0x00, a}
+		DrawRect(screen, p.X-9, p.Y+p.Height/2-3, 4, 3, clr)
+		DrawRect(screen, p.X+5, p.Y+p.Height/2-3, 4, 3, clr)
 	}
 }
 

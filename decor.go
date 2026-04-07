@@ -239,37 +239,35 @@ func (ds *DecorSystem) spawnBillboard(left bool) {
 	}
 }
 
-func (ds *DecorSystem) Draw(screen *ebiten.Image, palette ZonePalette, sprites *SpriteCache) {
-	drawDecorSide(screen, ds.Left, palette, sprites)
-	drawDecorSide(screen, ds.Right, palette, sprites)
+func (ds *DecorSystem) Draw(screen *ebiten.Image, palette ZonePalette, sprites *SpriteCache, offsetFn func(float64) float64) {
+	drawDecorSide(screen, ds.Left, palette, sprites, offsetFn)
+	drawDecorSide(screen, ds.Right, palette, sprites, offsetFn)
 }
 
-func drawDecorSide(screen *ebiten.Image, objs []DecorObject, palette ZonePalette, sprites *SpriteCache) {
+func drawDecorSide(screen *ebiten.Image, objs []DecorObject, palette ZonePalette, sprites *SpriteCache, offsetFn func(float64) float64) {
 	for _, obj := range objs {
+		ox := obj.X + offsetFn(obj.Y)*0.5 // parallax: decor shifts less than road
 		switch obj.Type {
 		case DecorBuilding:
 			rs := renderScaleGlobal
 			bldg := sprites.Buildings[obj.SpriteIdx]
 			if bldg != nil {
 				op := &ebiten.DrawImageOptions{}
-				// Scale to match the requested building size in render pixels.
 				bw, bh := bldg.Bounds().Dx(), bldg.Bounds().Dy()
 				sx := obj.Width * rs / float64(bw)
 				sy := obj.Height * rs / float64(bh)
 				op.GeoM.Scale(sx, sy)
-				op.GeoM.Translate(obj.X*rs, obj.Y*rs)
-				// Tint with zone background color.
+				op.GeoM.Translate(ox*rs, obj.Y*rs)
 				op.ColorScale.ScaleWithColor(obj.Color)
 				screen.DrawImage(bldg, op)
 			}
-			// Window overlays (drawn over sprite, colored by zone accent).
 			winSize := 3.0
 			cols := int(obj.Width / 8)
 			rows := int(obj.Height / 12)
 			for r := range rows {
 				for c := range cols {
 					if c*rows+r < len(obj.WindowLit) && obj.WindowLit[c*rows+r] {
-						wx := obj.X + 4 + float64(c)*8
+						wx := ox + 4 + float64(c)*8
 						wy := obj.Y + 4 + float64(r)*12
 						DrawRect(screen, wx, wy, winSize, winSize, palette.NeonAccent)
 					}
@@ -277,25 +275,25 @@ func drawDecorSide(screen *ebiten.Image, objs []DecorObject, palette ZonePalette
 			}
 
 		case DecorLampPost:
-			drawSprite(screen, sprites.LampPost, obj.X+1, obj.Y+obj.Height/2)
+			drawSprite(screen, sprites.LampPost, ox+1, obj.Y+obj.Height/2)
 
 		case DecorBush:
-			DrawRect(screen, obj.X, obj.Y, obj.Width, obj.Height, obj.Color)
+			DrawRect(screen, ox, obj.Y, obj.Width, obj.Height, obj.Color)
 
 		case DecorTunnelWall:
-			DrawRect(screen, obj.X, obj.Y, obj.Width, obj.Height, obj.Color)
+			DrawRect(screen, ox, obj.Y, obj.Width, obj.Height, obj.Color)
 
 		case DecorCactus:
-			DrawRect(screen, obj.X, obj.Y, obj.Width, obj.Height, obj.Color)
+			DrawRect(screen, ox, obj.Y, obj.Width, obj.Height, obj.Color)
 			armY := obj.Y + obj.Height*0.3
-			DrawRect(screen, obj.X-4, armY, 4, 3, obj.Color)
-			DrawRect(screen, obj.X+obj.Width, armY+8, 4, 3, obj.Color)
+			DrawRect(screen, ox-4, armY, 4, 3, obj.Color)
+			DrawRect(screen, ox+obj.Width, armY+8, 4, 3, obj.Color)
 
 		case DecorBillboard:
-			DrawRect(screen, obj.X+obj.Width/2-1, obj.Y+obj.Height, 2, 10,
+			DrawRect(screen, ox+obj.Width/2-1, obj.Y+obj.Height, 2, 10,
 				color.RGBA{0x66, 0x66, 0x66, 0xFF})
-			DrawRect(screen, obj.X, obj.Y, obj.Width, obj.Height, obj.Color)
-			DrawRect(screen, obj.X, obj.Y, obj.Width, 2,
+			DrawRect(screen, ox, obj.Y, obj.Width, obj.Height, obj.Color)
+			DrawRect(screen, ox, obj.Y, obj.Width, 2,
 				color.RGBA{0xFF, 0xFF, 0xFF, 0x88})
 		}
 	}

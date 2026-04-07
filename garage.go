@@ -19,21 +19,23 @@ const (
 
 // PlayerCarDef defines a player car's properties.
 type PlayerCarDef struct {
-	Name        string
-	Color       color.RGBA
-	SpeedMod    float64    // multiplier for SpeedIncrement
-	ManeuverMod float64    // multiplier for move speed and acceleration
-	MaxNitro    int
-	UnlockScore int
-	Special     CarSpecial
+	Name         string
+	Color        color.RGBA
+	MaxSpeed     float64
+	Acceleration float64
+	BrakeForce   float64
+	Handling     float64 // lateral movement multiplier
+	MaxNitro     int
+	UnlockScore  int
+	Special      CarSpecial
 }
 
 var PlayerCars = [5]PlayerCarDef{
-	{"STARTER", color.RGBA{0x00, 0xAA, 0xFF, 0xFF}, 1.0, 1.0, 1, 0, SpecialNone},
-	{"SWIFT", color.RGBA{0x39, 0xFF, 0x14, 0xFF}, 1.15, 1.2, 2, 5000, SpecialNone},
-	{"FURY", color.RGBA{0xFF, 0x14, 0x93, 0xFF}, 1.3, 0.9, 2, 20000, SpecialWiderNearMiss},
-	{"PHANTOM", color.RGBA{0xFF, 0x66, 0x00, 0xFF}, 1.1, 1.1, 3, 50000, SpecialFuelSaver},
-	{"GHOST", color.RGBA{0xEE, 0xEE, 0xFF, 0xFF}, 1.0, 1.0, 2, 100000, SpecialGhostShield},
+	{"STARTER", color.RGBA{0x00, 0xAA, 0xFF, 0xFF}, 10.0, 0.06, 0.08, 1.0, 1, 0, SpecialNone},
+	{"SWIFT", color.RGBA{0x39, 0xFF, 0x14, 0xFF}, 11.5, 0.09, 0.10, 1.2, 2, 5000, SpecialNone},
+	{"FURY", color.RGBA{0xFF, 0x14, 0x93, 0xFF}, 13.0, 0.04, 0.05, 0.8, 2, 20000, SpecialWiderNearMiss},
+	{"PHANTOM", color.RGBA{0xFF, 0x66, 0x00, 0xFF}, 11.0, 0.06, 0.12, 1.1, 3, 50000, SpecialFuelSaver},
+	{"GHOST", color.RGBA{0xEE, 0xEE, 0xFF, 0xFF}, 10.0, 0.07, 0.08, 1.0, 2, 100000, SpecialGhostShield},
 }
 
 var specialNames = map[CarSpecial]string{
@@ -83,10 +85,12 @@ func DrawGarage(screen *ebiten.Image, selectedIdx int, save *SaveData, sprites *
 
 	// Stats.
 	statsY := nameY + 25
-	drawStatBar(screen, "SPD", car.SpeedMod, 1.3, 100, statsY)
-	drawStatBar(screen, "MGN", car.ManeuverMod, 1.2, 100, statsY+16)
-	drawStatBar(screen, "NOS", float64(car.MaxNitro)/3.0, 1.0, 100, statsY+32)
-	DebugPrintScaled(screen, fmt.Sprintf("SPC: %s", specialNames[car.Special]), 100, statsY+48)
+	drawStatBar(screen, "SPD", car.MaxSpeed, 13.0, 100, statsY)
+	drawStatBar(screen, "ACC", car.Acceleration, 0.09, 100, statsY+16)
+	drawStatBar(screen, "BRK", car.BrakeForce, 0.12, 100, statsY+32)
+	drawStatBar(screen, "HND", car.Handling, 1.2, 100, statsY+48)
+	drawStatBar(screen, "NOS", float64(car.MaxNitro)/3.0, 1.0, 100, statsY+64)
+	DebugPrintScaled(screen, fmt.Sprintf("SPC: %s", specialNames[car.Special]), 100, statsY+80)
 
 	// Unlock status.
 	statusY := statsY + 72

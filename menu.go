@@ -19,13 +19,13 @@ func NewMenuState() MenuState {
 
 func (m *MenuState) Update() {
 	m.BgScrollTick++
-	m.BgRoad.Update(BaseScrollSpeed * 0.5)
+	m.BgRoad.Update(BaseScrollSpeed*0.5, 0)
 }
 
 // DrawMenu renders the main menu screen.
 func DrawMenu(screen *ebiten.Image, menu *MenuState, save *SaveData) {
 	// Scrolling road background.
-	menu.BgRoad.Draw(screen, zonePalettes[ZoneNightCity], ZoneNightCity)
+	menu.BgRoad.Draw(screen, zonePalettes[ZoneNightCity], ZoneNightCity, func(float64) float64 { return 0 })
 
 	// Dark overlay.
 	DrawRect(screen, 0, 0, ScreenWidth, ScreenHeight, colorOverlay)

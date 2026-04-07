@@ -17,10 +17,13 @@ const (
 	PlayerStartX = 200 // center of screen
 	PlayerStartY = 480 // near bottom
 
-	// Scroll speed (px/tick).
-	BaseScrollSpeed = 3.0
-	MaxScrollSpeed  = 12.0
-	SpeedIncrement  = 0.002
+	// Speed (px/tick).
+	BaseScrollSpeed = 3.0  // base NPC speed reference
+	MaxScrollSpeed  = 13.0 // max possible (FURY)
+
+	// Player speed control.
+	MinSpeed     = 2.0
+	Deceleration = 0.03
 
 	// Player lateral movement.
 	PlayerMoveSpeed    = 4.0
@@ -49,9 +52,6 @@ const (
 	NitroChargeMax = 3
 	NitroDuration  = 180 // 3 seconds at 60 TPS
 
-	// Speed modifiers.
-	SpeedBoostFactor = 1.3 // Up key: +30%
-	SpeedBrakeFactor = 0.5 // Down key: -50%
 
 	// Default sprite scale (overridden dynamically in NewSpriteCache).
 	DefaultSpriteScale = 4.0
@@ -60,6 +60,9 @@ const (
 	PlayerSpriteW = 36
 	PlayerSpriteH = 58
 	PlayerGlowPad = 4
+
+	// Road curve rendering.
+	CurveViewDistance = 400.0 // how far ahead top of screen "sees"
 
 	// Decor parallax.
 	DecorParallaxFactor = 0.6
