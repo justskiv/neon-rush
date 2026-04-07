@@ -287,7 +287,7 @@ func (g *Game) updatePlaying() {
 	}
 
 	// Increase base speed.
-	g.scrollSpeed += SpeedIncrement * g.activeCar.SpeedMod
+	g.scrollSpeed += SpeedIncrement
 	if g.scrollSpeed > MaxScrollSpeed {
 		g.scrollSpeed = MaxScrollSpeed
 	}
@@ -651,9 +651,14 @@ func (g *Game) Draw(screen *ebiten.Image) {
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	scale := ebiten.Monitor().DeviceScaleFactor()
-	renderW := int(float64(outsideWidth) * scale)
-	renderH := int(float64(outsideHeight) * scale)
+	dsf := ebiten.Monitor().DeviceScaleFactor()
+	// Fit logical 400×600 into the available area, preserving aspect ratio.
+	fitScale := min(
+		float64(outsideWidth)/float64(ScreenWidth),
+		float64(outsideHeight)/float64(ScreenHeight),
+	)
+	renderW := int(float64(ScreenWidth) * fitScale * dsf)
+	renderH := int(float64(ScreenHeight) * fitScale * dsf)
 	g.renderScale = float64(renderW) / float64(ScreenWidth)
 	return renderW, renderH
 }
