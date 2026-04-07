@@ -88,5 +88,6 @@ func (p *Player) ApplyOilSpin() {
 }
 
 func (p *Player) Bounds() Rect {
-	return NewRect(p.X, p.Y, p.Width, p.Height)
+	// Hitbox is smaller than visual sprite (curved body is narrower).
+	return NewRect(p.X, p.Y, p.Width*0.8, p.Height*0.9)
 }

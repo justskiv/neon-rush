@@ -39,6 +39,7 @@ type Game struct {
 	nitroCharges    int
 	nitroActive     bool
 	nitroTimer      int
+	nitroGrace      int // invulnerability ticks after nitro ends
 	nitroSpawnTimer int
 
 	zone       ZoneSystem
@@ -73,6 +74,7 @@ type Game struct {
 	newUnlocks         []string
 	isNewHighScore     bool
 	busted             bool
+	fuelEmpty          bool
 }
 
 // NewGame creates and initializes a new game instance.
@@ -265,6 +267,7 @@ func (g *Game) updatePlaying() {
 	g.fuel -= g.fuelConsumption
 	if g.fuel <= 0 {
 		g.fuel = 0
+		g.fuelEmpty = true
 		g.enterGameOver()
 		return
 	}
@@ -359,8 +362,12 @@ func (g *Game) updatePlaying() {
 		g.nitroTimer--
 		if g.nitroTimer <= 0 {
 			g.nitroActive = false
+			g.nitroGrace = 30 // 0.5s grace period after nitro ends
 		}
 		effectiveSpeed *= 2.0
+	}
+	if g.nitroGrace > 0 {
+		g.nitroGrace--
 	}
 
 	var overtakeScore int
@@ -409,12 +416,12 @@ func (g *Game) updatePlaying() {
 
 	// Near-miss checks.
 	for _, car := range g.traffic {
-		bonus := CheckNearMiss(&g.player, car, &g.scoreState, g.nearMissThreshold)
-		if bonus > 0 {
-			g.score += bonus
+		res := CheckNearMiss(&g.player, car, &g.scoreState, g.nearMissThreshold, effectiveSpeed)
+		if res.Bonus > 0 {
+			g.score += res.Bonus
 			g.nearMissCount++
-			g.particles.EmitFlash(g.player.X, g.player.Y)
-			g.audio.PlayWoosh()
+			g.particles.EmitFlash(res.X, res.Y, res.Tier)
+			g.audio.PlayWoosh(res.Tier)
 			if g.scoreState.ComboMultiplier > g.peakCombo {
 				g.peakCombo = g.scoreState.ComboMultiplier
 				g.audio.PlayCombo()
@@ -446,11 +453,11 @@ func (g *Game) updatePlaying() {
 		g.shakeOffsetY = 0
 	}
 
-	// Check collisions (nitro grants invulnerability).
-	if cr := CheckPlayerTrafficCollision(&g.player, g.traffic); cr.Hit && !g.nitroActive {
+	// Check collisions (nitro and grace period grant invulnerability).
+	if cr := CheckPlayerTrafficCollision(&g.player, g.traffic); cr.Hit && !g.nitroActive && g.nitroGrace <= 0 {
 		if g.ghostShieldActive {
 			g.ghostShieldActive = false
-			g.particles.EmitFlash(g.player.X, g.player.Y)
+			g.particles.EmitFlash(g.player.X, g.player.Y, TierClose)
 			g.shakeTimer = 5
 		} else {
 			g.particles.EmitSparks(cr.HitX, cr.HitY, 10)
@@ -535,6 +542,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			NewUnlocks:     g.newUnlocks,
 			TotalScore:     g.save.TotalScore,
 			Busted:         g.busted,
+			FuelEmpty:      g.fuelEmpty,
 		})
 	case StateGarage:
 		g.drawGarage(dst)
@@ -556,8 +564,13 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 func (g *Game) enterGameOver() {
 	g.state = StateGameOver
 	g.gameOverSelection = 0
-	g.audio.PlayCrash()
-	g.audio.StopEngine()
+	if g.fuelEmpty {
+		// Fuel empty — engine sputter, not a crash.
+		g.audio.StopEngine()
+	} else {
+		g.audio.PlayCrash()
+		g.audio.StopEngine()
+	}
 
 	g.isNewHighScore = g.score > g.save.HighScore
 	g.save.GamesPlayed++
@@ -617,6 +630,8 @@ func (g *Game) reset() {
 	g.peakCombo = 0
 	g.nearMissCount = 0
 	g.busted = false
+	g.fuelEmpty = false
+	g.nitroGrace = 0
 	g.oilSpawnTimer = randRange(15*TPS, 25*TPS)
 	g.coinSpawnTimer = randRange(8*TPS, 15*TPS)
 	g.coinLineCount = 0

@@ -85,6 +85,7 @@ type GameOverData struct {
 	NewUnlocks     []string
 	TotalScore     int
 	Busted         bool
+	FuelEmpty      bool
 }
 
 // DrawGameOver renders the game over overlay with stats.
@@ -96,6 +97,8 @@ func DrawGameOver(screen *ebiten.Image, data GameOverData) {
 	title := "G A M E   O V E R"
 	if data.Busted {
 		title = "B U S T E D !"
+	} else if data.FuelEmpty {
+		title = "O U T  O F  F U E L"
 	}
 	DebugPrintScaled(screen, title, cx, cy)
 

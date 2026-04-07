@@ -19,7 +19,7 @@ const (
 	ParticleRain
 )
 
-const particlePoolSize = 400
+const particlePoolSize = 600
 
 // Particle is a single visual effect element.
 type Particle struct {
@@ -43,6 +43,13 @@ func NewParticleSystem() ParticleSystem {
 func (ps *ParticleSystem) spawn() *Particle {
 	for i := range ps.Pool {
 		if !ps.Pool[i].Active {
+			return &ps.Pool[i]
+		}
+	}
+	// Pool full: evict oldest rain particle (lowest priority).
+	for i := range ps.Pool {
+		if ps.Pool[i].Type == ParticleRain {
+			ps.Pool[i].Active = false
 			return &ps.Pool[i]
 		}
 	}
@@ -77,15 +84,34 @@ func sparkColor() color.RGBA {
 	return color.RGBA{0xFF, 0x88, 0x00, 0xFF} // orange
 }
 
-// EmitFlash creates a near-miss burst: small cyan particles flying outward.
-func (ps *ParticleSystem) EmitFlash(x, y float64) {
-	for range 8 {
+// Particle configs per near-miss tier.
+var flashConfigs = [5]struct {
+	Count     int
+	Size      float64
+	SpeedMin  float64
+	SpeedMax  float64
+	Color     color.RGBA
+}{
+	{},                                                                   // TierNone
+	{8, 3, 2.0, 5.0, color.RGBA{0x00, 0xFF, 0xCC, 0xC0}},              // TierNear — cyan
+	{12, 3, 2.5, 5.5, color.RGBA{0xFF, 0xFF, 0x00, 0xC0}},             // TierClose — yellow
+	{16, 4, 3.0, 6.0, color.RGBA{0xFF, 0x88, 0x00, 0xD0}},             // TierVeryClose — orange
+	{22, 4, 3.5, 7.0, color.RGBA{0xFF, 0x44, 0xFF, 0xE0}},             // TierInsane — magenta
+}
+
+// EmitFlash creates a near-miss particle burst scaled by tier.
+func (ps *ParticleSystem) EmitFlash(x, y float64, tier NearMissTier) {
+	if tier <= TierNone || int(tier) >= len(flashConfigs) {
+		return
+	}
+	cfg := flashConfigs[tier]
+	for range cfg.Count {
 		p := ps.spawn()
 		if p == nil {
 			return
 		}
 		angle := rand.Float64() * 6.283
-		speed := 2.0 + rand.Float64()*3.0
+		speed := cfg.SpeedMin + rand.Float64()*(cfg.SpeedMax-cfg.SpeedMin)
 		ttl := 12 + rand.IntN(8)
 		*p = Particle{
 			Active: true,
@@ -94,9 +120,9 @@ func (ps *ParticleSystem) EmitFlash(x, y float64) {
 			Y: y + (rand.Float64()*10 - 5),
 			VX: speed * math.Cos(angle),
 			VY: speed * math.Sin(angle),
-			W: 3, H: 3,
+			W: cfg.Size, H: cfg.Size,
 			TTL: ttl, MaxTTL: ttl,
-			Color: color.RGBA{0x00, 0xFF, 0xCC, 0xC0},
+			Color: cfg.Color,
 		}
 	}
 }

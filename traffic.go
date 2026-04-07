@@ -171,6 +171,7 @@ func lanesOccupiedAtY(cars []*TrafficCar, y, margin float64) int {
 }
 
 // breakWalls nudges NPC cars apart when they form impassable lines.
+// Applies a one-time speed reduction (flagged to prevent repeated decay).
 func breakWalls(cars []*TrafficCar) {
 	for _, a := range cars {
 		neighbors := 0
@@ -182,8 +183,8 @@ func breakWalls(cars []*TrafficCar) {
 				neighbors++
 			}
 		}
-		if neighbors >= LaneCount-1 {
-			a.Speed *= 0.4 // drift down faster, breaking the line
+		if neighbors >= LaneCount-1 && a.Speed > 0.5 {
+			a.Speed = 0.5 // set to low fixed speed instead of repeated multiply
 			break
 		}
 	}
@@ -321,5 +322,5 @@ func (c *TrafficCar) Draw(screen *ebiten.Image, sprites *SpriteCache) {
 }
 
 func (c *TrafficCar) Bounds() Rect {
-	return NewRect(c.X, c.Y, c.Width, c.Height)
+	return NewRect(c.X, c.Y, c.Width*0.8, c.Height*0.9)
 }

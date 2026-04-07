@@ -2,7 +2,6 @@ package main
 
 import (
 	"image/color"
-	"math/rand/v2"
 )
 
 // CarType identifies the NPC vehicle type.
@@ -52,14 +51,3 @@ var TruckColors = [3]color.RGBA{
 	{0x44, 0x44, 0x33, 0xFF},
 }
 
-func sedanColor() color.RGBA {
-	return SedanColors[rand.IntN(len(SedanColors))]
-}
-
-func sportColor() color.RGBA {
-	return SportColors[rand.IntN(len(SportColors))]
-}
-
-func truckColor() color.RGBA {
-	return TruckColors[rand.IntN(len(TruckColors))]
-}

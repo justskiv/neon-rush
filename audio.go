@@ -16,11 +16,11 @@ type AudioSystem struct {
 	engine       *EngineSound
 	enginePlayer *audio.Player
 
-	sfxWoosh  []byte
-	sfxCrash  []byte
-	sfxPickup []byte
-	sfxNitro  []byte
-	sfxCombo  []byte
+	sfxWoosh      [4][]byte // per tier: Near, Close, VeryClose, Insane
+	sfxCrash      []byte
+	sfxPickup     []byte
+	sfxNitro      []byte
+	sfxCombo      []byte
 }
 
 // NewAudioSystem creates the audio context and generates all sound effects.
@@ -41,8 +41,13 @@ func NewAudioSystem() *AudioSystem {
 		context:      ctx,
 		engine:       eng,
 		enginePlayer: engPlayer,
-		sfxWoosh:     generateWoosh(),
-		sfxCrash:     generateCrash(),
+		sfxWoosh: [4][]byte{
+			generateWooshTier(0.15, 8.0, []float64{880}, 0.15, 0.35, 8000),
+			generateWooshTier(0.20, 6.0, []float64{1047}, 0.20, 0.40, 8000),
+			generateWooshTier(0.25, 5.0, []float64{1047, 1319}, 0.25, 0.40, 10000),
+			generateWooshTier(0.30, 4.0, []float64{1047, 1319, 1568}, 0.20, 0.40, 10000),
+		},
+		sfxCrash: generateCrash(),
 		sfxPickup:    generatePickup(),
 		sfxNitro:     generateNitroSFX(),
 		sfxCombo:     generateCombo(),
@@ -61,7 +66,14 @@ func (a *AudioSystem) UpdateEngineSpeed(scrollSpeed float64) {
 	a.engine.SetSpeedMod(scrollSpeed)
 }
 
-func (a *AudioSystem) PlayWoosh()  { a.playSFX(a.sfxWoosh, 0.25) }
+func (a *AudioSystem) PlayWoosh(tier NearMissTier) {
+	idx := int(tier) - 1 // TierNear=1 → index 0
+	if idx < 0 || idx >= len(a.sfxWoosh) {
+		idx = 0
+	}
+	vol := 0.20 + float64(idx)*0.05 // 0.20, 0.25, 0.30, 0.35
+	a.playSFX(a.sfxWoosh[idx], vol)
+}
 func (a *AudioSystem) PlayCrash()  { a.playSFX(a.sfxCrash, 0.35) }
 func (a *AudioSystem) PlayPickup() { a.playSFX(a.sfxPickup, 0.30) }
 func (a *AudioSystem) PlayNitro()  { a.playSFX(a.sfxNitro, 0.25) }
@@ -138,34 +150,33 @@ func sawtooth(phase float64) float64 {
 
 // --- SFX generators (PCM signed 16-bit LE, stereo, 48kHz → []byte) ---
 
-func generateWoosh() []byte {
-	const dur = 0.15
+// generateWooshTier creates a near-miss swoosh with tier-specific parameters.
+// freqs: tonal ping frequencies, pingAmp: amplitude per tone,
+// noiseAmp: filtered noise amplitude, startCutoff: initial LP cutoff Hz.
+func generateWooshTier(dur, decay float64, freqs []float64, pingAmp, noiseAmp, startCutoff float64) []byte {
 	n := int(dur * sampleRate)
 	buf := make([]byte, n*4)
-
-	// One-pole low-pass state for filtered noise sweep.
 	var lpState float64
 
 	for i := range n {
 		t := float64(i) / float64(n)
+		env := math.Exp(-t*decay) * math.Sin(t*math.Pi)
 
-		// Smooth envelope: fast attack, gentle exponential decay.
-		env := math.Exp(-t*8.0) * math.Sin(t*math.Pi)
-
-		// Sweep cutoff high→low (8kHz → 400Hz) for the "whoosh" motion.
-		cutoff := 400.0 + 7600.0*(1.0-t)*(1.0-t)
+		cutoff := 400.0 + (startCutoff-400.0)*(1.0-t)*(1.0-t)
 		rc := 1.0 / (2.0 * math.Pi * cutoff)
-		alpha := 1.0 / (1.0 + rc*sampleRate)
+		a := 1.0 / (1.0 + rc*sampleRate)
 
-		// Filter white noise through the sweeping low-pass.
 		noise := rand.Float64()*2 - 1
-		lpState += alpha * (noise - lpState)
+		lpState += a * (noise - lpState)
 
-		// Subtle tonal ping at A5 (880Hz), fades quickly.
-		ping := math.Sin(2*math.Pi*880*float64(i)/sampleRate) *
-			math.Exp(-t*16.0) * 0.15
+		// Tonal pings (chord for higher tiers).
+		var ping float64
+		for _, freq := range freqs {
+			ping += math.Sin(2*math.Pi*freq*float64(i)/sampleRate) * pingAmp
+		}
+		ping *= math.Exp(-t * 16.0)
 
-		sample := (lpState*0.35 + ping) * env
+		sample := (lpState*noiseAmp + ping) * env
 		writeSample16(buf, i, sample)
 	}
 	return buf
