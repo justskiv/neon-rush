@@ -36,33 +36,63 @@ var (
 	colorRepair = color.RGBA{0x00, 0xDD, 0xFF, 0xFF}
 )
 
-// SpawnItem creates a pickup on a random free lane.
-func SpawnItem(itemType ItemType, existing []*Item, traffic []*TrafficCar) *Item {
-	var w, h float64
-	var clr color.RGBA
-
-	switch itemType {
+// itemDef returns the size and color for an item type.
+func itemDef(t ItemType) (w, h float64, clr color.RGBA) {
+	switch t {
 	case ItemFuel:
-		w, h, clr = 12, 16, colorFuel
+		return 18, 22, colorFuel
 	case ItemNitro:
-		w, h, clr = 14, 14, colorNitro
+		return 20, 20, colorNitro
 	case ItemOil:
-		w, h, clr = 20, 14, colorOil
+		return 20, 14, colorOil
 	case ItemCoin:
-		w, h, clr = 10, 10, colorCoin
+		return 14, 14, colorCoin
 	case ItemRepair:
-		w, h, clr = 16, 16, colorRepair
+		return 16, 16, colorRepair
+	}
+	return 10, 10, colorCoin
+}
+
+// xToLane converts an X coordinate to a lane index (0-based).
+func xToLane(x float64) int {
+	lane := int((x - float64(RoadLeft)) / LaneWidth)
+	return max(0, min(lane, LaneCount-1))
+}
+
+// laneToX converts a lane index to the lane center X.
+func laneToX(lane int) float64 {
+	return float64(RoadLeft) + float64(lane)*LaneWidth + LaneWidth/2
+}
+
+// lanesNearPlayer returns lanes ordered by distance from the player's lane.
+func lanesNearPlayer(playerLane int) []int {
+	lanes := make([]int, 0, LaneCount)
+	lanes = append(lanes, playerLane)
+	for offset := 1; offset < LaneCount; offset++ {
+		if l := playerLane - offset; l >= 0 {
+			lanes = append(lanes, l)
+		}
+		if l := playerLane + offset; l < LaneCount {
+			lanes = append(lanes, l)
+		}
+	}
+	return lanes
+}
+
+// SpawnItem creates a pickup preferring the player's lane or adjacent ones.
+func SpawnItem(itemType ItemType, existing []*Item, traffic []*TrafficCar, playerX ...float64) *Item {
+	w, h, clr := itemDef(itemType)
+
+	pLane := LaneCount / 2
+	if len(playerX) > 0 {
+		pLane = xToLane(playerX[0])
 	}
 
-	start := rand.IntN(LaneCount)
-	for attempt := range LaneCount {
-		lane := (start + attempt) % LaneCount
-		cx := float64(RoadLeft) + float64(lane)*LaneWidth + LaneWidth/2
-
+	for _, lane := range lanesNearPlayer(pLane) {
+		cx := laneToX(lane)
 		if isItemLaneBlocked(existing, traffic, cx) {
 			continue
 		}
-
 		return &Item{
 			X: cx, Y: -h / 2,
 			Width: w, Height: h,
@@ -74,24 +104,35 @@ func SpawnItem(itemType ItemType, existing []*Item, traffic []*TrafficCar) *Item
 
 func isItemLaneBlocked(items []*Item, traffic []*TrafficCar, cx float64) bool {
 	for _, it := range items {
-		if math.Abs(it.X-cx) < LaneWidth/2 && it.Y < 100 {
+		if math.Abs(it.X-cx) < LaneWidth/2 && it.Y < 200 {
 			return true
 		}
 	}
 	for _, c := range traffic {
-		if math.Abs(c.X-cx) < LaneWidth/2 && c.Y < 100 {
+		if math.Abs(c.X-cx) < LaneWidth/2 && c.Y < 300 {
 			return true
 		}
 	}
 	return false
 }
 
-// UpdateItems moves items down and removes off-screen ones in-place.
-func UpdateItems(items []*Item, scrollSpeed float64) []*Item {
+// UpdateItems moves items down, applies magnetism, and removes off-screen ones.
+func UpdateItems(items []*Item, scrollSpeed, playerX, playerY float64) []*Item {
 	n := 0
 	for _, it := range items {
 		it.TickAge++
 		it.Y += scrollSpeed
+
+		// Magnetism: pull pickups toward player when close (not oil).
+		if it.Type != ItemOil {
+			dx := playerX - it.X
+			dy := playerY - it.Y
+			dist := math.Sqrt(dx*dx + dy*dy)
+			if dist < 40 && dist > 1 {
+				it.X += dx / dist * 2.5
+				it.Y += dy / dist * 1.5
+			}
+		}
 		if it.Y-it.Height/2 <= ScreenHeight {
 			items[n] = it
 			n++
@@ -169,7 +210,7 @@ func SpawnCoinLine(existing []*Item, traffic []*TrafficCar) []*Item {
 		for i := range count {
 			coins = append(coins, &Item{
 				X: cx, Y: -10 - float64(i)*30,
-				Width: 10, Height: 10,
+				Width: 14, Height: 14,
 				Type: ItemCoin, Color: colorCoin,
 			})
 		}

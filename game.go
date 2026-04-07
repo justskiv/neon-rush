@@ -95,7 +95,7 @@ func NewGame() *Game {
 		spawnInterval:   TrafficSpawnRate,
 		scrollSpeed:     BaseScrollSpeed,
 		fuel:            FuelMax,
-		fuelSpawnTimer:  randRange(10*TPS, 20*TPS),
+		fuelSpawnTimer:  randRange(5*TPS, 8*TPS),
 		nitroSpawnTimer: randRange(30*TPS, 60*TPS),
 		zone:            NewZoneSystem(),
 		decor:           NewDecorSystem(),
@@ -332,16 +332,16 @@ func (g *Game) updatePlaying() {
 	// Spawn fuel canisters.
 	g.fuelSpawnTimer--
 	if g.fuelSpawnTimer <= 0 {
-		if item := SpawnItem(ItemFuel, g.items, g.traffic); item != nil {
+		if item := SpawnItem(ItemFuel, g.items, g.traffic, g.player.X); item != nil {
 			g.items = append(g.items, item)
 		}
-		g.fuelSpawnTimer = randRange(10*TPS, 20*TPS)
+		g.fuelSpawnTimer = randRange(7*TPS, 13*TPS)
 	}
 
 	// Spawn nitro pickups.
 	g.nitroSpawnTimer--
 	if g.nitroSpawnTimer <= 0 {
-		if item := SpawnItem(ItemNitro, g.items, g.traffic); item != nil {
+		if item := SpawnItem(ItemNitro, g.items, g.traffic, g.player.X); item != nil {
 			g.items = append(g.items, item)
 		}
 		g.nitroSpawnTimer = randRange(30*TPS, 60*TPS)
@@ -373,7 +373,7 @@ func (g *Game) updatePlaying() {
 	if g.player.Damaged && !g.lastChanceActive {
 		g.repairSpawnTimer--
 		if g.repairSpawnTimer <= 0 {
-			if item := SpawnItem(ItemRepair, g.items, g.traffic); item != nil {
+			if item := SpawnItem(ItemRepair, g.items, g.traffic, g.player.X); item != nil {
 				g.items = append(g.items, item)
 			}
 			g.repairSpawnTimer = randRange(20*TPS, 40*TPS)
@@ -404,7 +404,7 @@ func (g *Game) updatePlaying() {
 	g.traffic, overtakeScore = UpdateTraffic(g.traffic, effectiveSpeed, g.player.X)
 	g.score += overtakeScore
 
-	g.items = UpdateItems(g.items, effectiveSpeed)
+	g.items = UpdateItems(g.items, effectiveSpeed, g.player.X, g.player.Y)
 
 	// Pick up items.
 	picked, remaining := CheckPlayerItemCollision(&g.player, g.items)
@@ -703,7 +703,7 @@ func (g *Game) reset() {
 	g.spawnTimer = 0
 	g.spawnInterval = TrafficSpawnRate
 	g.fuel = FuelMax
-	g.fuelSpawnTimer = randRange(10*TPS, 20*TPS)
+	g.fuelSpawnTimer = randRange(7*TPS, 13*TPS)
 	g.nitroCharges = 0
 	g.nitroActive = false
 	g.nitroTimer = 0
