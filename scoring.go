@@ -6,7 +6,6 @@ import (
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 // FloatingText is a score popup that drifts upward and fades out.
@@ -106,6 +105,6 @@ func DrawFloatingTexts(screen *ebiten.Image, texts []FloatingText) {
 		alpha := float64(ft.TTL) / float64(ft.MaxTTL)
 		clr := color.RGBA{ft.Color.R, ft.Color.G, ft.Color.B, uint8(alpha * 255)}
 		_ = clr // DebugPrint doesn't support color; we draw a tinted rect behind.
-		ebitenutil.DebugPrintAt(screen, ft.Text, int(ft.X), int(ft.Y))
+		DebugPrintScaled(screen, ft.Text, int(ft.X), int(ft.Y))
 	}
 }

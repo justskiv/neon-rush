@@ -24,6 +24,7 @@ type Item struct {
 	Width, Height float64
 	Type          ItemType
 	Color         color.RGBA
+	TickAge       int
 }
 
 var (
@@ -85,6 +86,7 @@ func isItemLaneBlocked(items []*Item, traffic []*TrafficCar, cx float64) bool {
 func UpdateItems(items []*Item, scrollSpeed float64) []*Item {
 	n := 0
 	for _, it := range items {
+		it.TickAge++
 		it.Y += scrollSpeed
 		if it.Y-it.Height/2 <= ScreenHeight {
 			items[n] = it
@@ -117,33 +119,31 @@ func CheckPlayerItemCollision(p *Player, items []*Item) ([]*Item, []*Item) {
 	return picked, items[:n]
 }
 
-func (it *Item) Draw(screen *ebiten.Image) {
+func (it *Item) Draw(screen *ebiten.Image, sprites *SpriteCache) {
 	switch it.Type {
 	case ItemFuel:
-		DrawRect(screen, it.X-it.Width/2, it.Y-it.Height/2, it.Width, it.Height, it.Color)
-		// "F" letter indicator — small dark rect in center.
-		DrawRect(screen, it.X-2, it.Y-3, 4, 6, color.RGBA{0x00, 0x66, 0x00, 0xFF})
+		glowAlpha := float32(0.3 + 0.2*math.Sin(float64(it.TickAge)*0.1))
+		drawSpriteAlpha(screen, sprites.FuelGlow, it.X, it.Y, glowAlpha)
+		drawSprite(screen, sprites.FuelCan, it.X, it.Y)
 	case ItemNitro:
-		// Draw as a diamond (rotated pixel).
-		s := it.Width * 0.7
+		glowAlpha := float32(0.3 + 0.2*math.Sin(float64(it.TickAge)*0.12))
+		drawSpriteAlpha(screen, sprites.NitroGlow, it.X, it.Y, glowAlpha)
+		// Slight oscillating rotation.
+		img := sprites.NitroItem
+		rs := renderScaleGlobal
 		op := &ebiten.DrawImageOptions{}
+		s := rs / SpriteScale
+		op.GeoM.Translate(-float64(img.Bounds().Dx())/2, -float64(img.Bounds().Dy())/2)
 		op.GeoM.Scale(s, s)
-		op.GeoM.Translate(-s/2, -s/2)
-		op.GeoM.Rotate(math.Pi / 4)
-		op.GeoM.Translate(it.X, it.Y)
-		op.ColorScale.ScaleWithColor(it.Color)
-		screen.DrawImage(pixel, op)
+		op.GeoM.Rotate(math.Sin(float64(it.TickAge)*0.1) * 0.09)
+		op.GeoM.Translate(it.X*rs, it.Y*rs)
+		op.Filter = ebiten.FilterLinear
+		screen.DrawImage(img, op)
 	case ItemOil:
-		// Dark semi-transparent blob.
-		DrawRect(screen, it.X-it.Width/2, it.Y-it.Height/2, it.Width, it.Height, it.Color)
-		// Slightly offset smaller blob for organic look.
-		DrawRect(screen, it.X-it.Width/3, it.Y-it.Height/3, it.Width*0.6, it.Height*0.6,
-			color.RGBA{0x33, 0x22, 0x11, 0x77})
+		drawSprite(screen, sprites.OilSpill, it.X, it.Y)
 	case ItemCoin:
-		// Golden square with shimmer.
-		DrawRect(screen, it.X-it.Width/2, it.Y-it.Height/2, it.Width, it.Height, it.Color)
-		// Bright center.
-		DrawRect(screen, it.X-2, it.Y-2, 4, 4, color.RGBA{0xFF, 0xFF, 0x88, 0xFF})
+		frame := (it.TickAge / 8) % 4
+		drawSprite(screen, sprites.Coin[frame], it.X, it.Y)
 	}
 }
 

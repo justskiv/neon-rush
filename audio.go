@@ -139,13 +139,33 @@ func sawtooth(phase float64) float64 {
 // --- SFX generators (PCM signed 16-bit LE, stereo, 48kHz → []byte) ---
 
 func generateWoosh() []byte {
-	dur := 0.2
+	const dur = 0.15
 	n := int(dur * sampleRate)
-	buf := make([]byte, n*4) // 16-bit stereo = 4 bytes/frame
+	buf := make([]byte, n*4)
+
+	// One-pole low-pass state for filtered noise sweep.
+	var lpState float64
+
 	for i := range n {
 		t := float64(i) / float64(n)
-		env := 1.0 - math.Abs(2*t-1) // triangle envelope
-		sample := (rand.Float64()*2 - 1) * env * 0.4
+
+		// Smooth envelope: fast attack, gentle exponential decay.
+		env := math.Exp(-t*8.0) * math.Sin(t*math.Pi)
+
+		// Sweep cutoff high→low (8kHz → 400Hz) for the "whoosh" motion.
+		cutoff := 400.0 + 7600.0*(1.0-t)*(1.0-t)
+		rc := 1.0 / (2.0 * math.Pi * cutoff)
+		alpha := 1.0 / (1.0 + rc*sampleRate)
+
+		// Filter white noise through the sweeping low-pass.
+		noise := rand.Float64()*2 - 1
+		lpState += alpha * (noise - lpState)
+
+		// Subtle tonal ping at A5 (880Hz), fades quickly.
+		ping := math.Sin(2*math.Pi*880*float64(i)/sampleRate) *
+			math.Exp(-t*16.0) * 0.15
+
+		sample := (lpState*0.35 + ping) * env
 		writeSample16(buf, i, sample)
 	}
 	return buf

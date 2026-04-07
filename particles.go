@@ -2,6 +2,7 @@ package main
 
 import (
 	"image/color"
+	"math"
 	"math/rand/v2"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -76,19 +77,27 @@ func sparkColor() color.RGBA {
 	return color.RGBA{0xFF, 0x88, 0x00, 0xFF} // orange
 }
 
-// EmitFlash creates a near-miss flash around the player.
+// EmitFlash creates a near-miss burst: small cyan particles flying outward.
 func (ps *ParticleSystem) EmitFlash(x, y float64) {
-	p := ps.spawn()
-	if p == nil {
-		return
-	}
-	*p = Particle{
-		Active: true,
-		Type:   ParticleFlash,
-		X: x, Y: y,
-		W: PlayerWidth + 8, H: PlayerHeight + 8,
-		TTL: 6, MaxTTL: 6,
-		Color: color.RGBA{0xFF, 0xFF, 0xFF, 0x60},
+	for range 8 {
+		p := ps.spawn()
+		if p == nil {
+			return
+		}
+		angle := rand.Float64() * 6.283
+		speed := 2.0 + rand.Float64()*3.0
+		ttl := 12 + rand.IntN(8)
+		*p = Particle{
+			Active: true,
+			Type:   ParticleFlash,
+			X: x + (rand.Float64()*10 - 5),
+			Y: y + (rand.Float64()*10 - 5),
+			VX: speed * math.Cos(angle),
+			VY: speed * math.Sin(angle),
+			W: 3, H: 3,
+			TTL: ttl, MaxTTL: ttl,
+			Color: color.RGBA{0x00, 0xFF, 0xCC, 0xC0},
+		}
 	}
 }
 

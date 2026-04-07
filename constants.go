@@ -52,4 +52,16 @@ const (
 	// Speed modifiers.
 	SpeedBoostFactor = 1.3 // Up key: +30%
 	SpeedBrakeFactor = 0.5 // Down key: -50%
+
+	// Default sprite scale (overridden dynamically in NewSpriteCache).
+	DefaultSpriteScale = 4.0
+
+	// Sprite sizes at logical resolution.
+	PlayerSpriteW = 36
+	PlayerSpriteH = 58
+	PlayerGlowPad = 4
+
+	// Decor parallax.
+	DecorParallaxFactor = 0.6
+	NumBuildingVariants = 12
 )

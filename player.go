@@ -17,6 +17,7 @@ type Player struct {
 	Acceleration    float64
 	SpinTimer       int
 	SpinForce       float64
+	CarIndex        int
 }
 
 func NewPlayer() Player {
@@ -24,6 +25,13 @@ func NewPlayer() Player {
 }
 
 func newPlayerFromCar(car PlayerCarDef) Player {
+	idx := 0
+	for i, c := range PlayerCars {
+		if c.Name == car.Name {
+			idx = i
+			break
+		}
+	}
 	return Player{
 		X:            PlayerStartX,
 		Y:            PlayerStartY,
@@ -32,6 +40,7 @@ func newPlayerFromCar(car PlayerCarDef) Player {
 		Color:        car.Color,
 		MoveSpeed:    PlayerMoveSpeed * car.ManeuverMod,
 		Acceleration: PlayerAcceleration * car.ManeuverMod,
+		CarIndex:     idx,
 	}
 }
 
@@ -67,8 +76,9 @@ func (p *Player) Update() {
 	}
 }
 
-func (p *Player) Draw(screen *ebiten.Image) {
-	DrawRect(screen, p.X-p.Width/2, p.Y-p.Height/2, p.Width, p.Height, p.Color)
+func (p *Player) Draw(screen *ebiten.Image, sprites *SpriteCache) {
+	drawSpriteAlpha(screen, sprites.PlayerGlow[p.CarIndex], p.X, p.Y, 0.5)
+	drawSprite(screen, sprites.PlayerCars[p.CarIndex], p.X, p.Y)
 }
 
 // ApplyOilSpin causes the player to lose control for 60 ticks.

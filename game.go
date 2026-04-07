@@ -4,7 +4,6 @@ import (
 	"math/rand/v2"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 // GameState represents the current state of the game.
@@ -49,7 +48,9 @@ type Game struct {
 	braking    bool
 
 	audio          *AudioSystem
+	sprites        *SpriteCache
 	offscreen      *ebiten.Image
+	renderScale    float64 // ratio of render buffer to logical size
 	shakeTimer     int
 	shakeOffsetX   float64
 	shakeOffsetY   float64
@@ -93,7 +94,8 @@ func NewGame() *Game {
 		scoreState:      NewScoreState(),
 		particles:       NewParticleSystem(),
 		audio:           NewAudioSystem(),
-		offscreen:       ebiten.NewImage(ScreenWidth, ScreenHeight),
+		sprites:         NewSpriteCache(),
+		renderScale:     1.0,
 		save:            LoadSave(),
 	}
 	return g
@@ -181,7 +183,7 @@ func (g *Game) drawPaused(dst *ebiten.Image) {
 
 	cx := ScreenWidth/2 - 40
 	cy := ScreenHeight/2 - 40
-	ebitenutil.DebugPrintAt(dst, "P A U S E D", cx, cy)
+	DebugPrintScaled(dst, "P A U S E D", cx, cy)
 
 	items := []string{"RESUME", "RESTART", "QUIT"}
 	for i, item := range items {
@@ -189,7 +191,7 @@ func (g *Game) drawPaused(dst *ebiten.Image) {
 		if i == g.pauseSelection {
 			marker = "> "
 		}
-		ebitenutil.DebugPrintAt(dst, marker+item, cx, cy+30+i*18)
+		DebugPrintScaled(dst, marker+item, cx, cy+30+i*18)
 	}
 }
 
@@ -243,7 +245,7 @@ func (g *Game) updateGarage() {
 }
 
 func (g *Game) drawGarage(dst *ebiten.Image) {
-	DrawGarage(dst, g.garageSelection, &g.save)
+	DrawGarage(dst, g.garageSelection, &g.save, g.sprites)
 }
 
 // --- Playing ---
@@ -463,17 +465,17 @@ func (g *Game) updatePlaying() {
 
 func (g *Game) drawPlaying(dst *ebiten.Image) {
 	g.road.Draw(dst, g.zone.ActivePalette, g.zone.CurrentZone)
-	g.decor.Draw(dst, g.zone.ActivePalette)
+	g.decor.Draw(dst, g.zone.ActivePalette, g.sprites)
 
 	for _, it := range g.items {
-		it.Draw(dst)
+		it.Draw(dst, g.sprites)
 	}
 
 	for _, car := range g.traffic {
-		car.Draw(dst)
+		car.Draw(dst, g.sprites)
 	}
 
-	g.player.Draw(dst)
+	g.player.Draw(dst, g.sprites)
 	g.particles.Draw(dst)
 
 	if g.zone.CurrentZone == ZoneRain {
@@ -495,8 +497,21 @@ func (g *Game) drawPlaying(dst *ebiten.Image) {
 // --- Draw dispatcher ---
 
 func (g *Game) Draw(screen *ebiten.Image) {
+	sw, sh := screen.Bounds().Dx(), screen.Bounds().Dy()
+
+	// Recreate offscreen when render resolution changes.
+	if g.offscreen == nil || g.offscreen.Bounds().Dx() != sw || g.offscreen.Bounds().Dy() != sh {
+		g.offscreen = ebiten.NewImage(sw, sh)
+	}
+
+	// Publish render scale for all Draw helpers.
+	renderScaleGlobal = g.renderScale
+
 	g.offscreen.Clear()
 	dst := g.offscreen
+
+	// Scale all drawing from logical coordinates to render resolution.
+	rs := g.renderScale
 
 	switch g.state {
 	case StateMenu:
@@ -526,12 +541,16 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(g.shakeOffsetX, g.shakeOffsetY)
+	op.GeoM.Translate(g.shakeOffsetX*rs, g.shakeOffsetY*rs)
 	screen.DrawImage(g.offscreen, op)
 }
 
-func (g *Game) Layout(_, _ int) (int, int) {
-	return ScreenWidth, ScreenHeight
+func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+	scale := ebiten.Monitor().DeviceScaleFactor()
+	renderW := int(float64(outsideWidth) * scale)
+	renderH := int(float64(outsideHeight) * scale)
+	g.renderScale = float64(renderW) / float64(ScreenWidth)
+	return renderW, renderH
 }
 
 func (g *Game) enterGameOver() {

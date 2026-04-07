@@ -5,7 +5,6 @@ import (
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 var colorOverlay = color.RGBA{0, 0, 0, 160}
@@ -27,8 +26,8 @@ func DrawHUD(screen *ebiten.Image, data HUDData) {
 	DrawRect(screen, 0, 0, ScreenWidth, 42, color.RGBA{0, 0, 0, 120})
 
 	speedKmh := int(data.ScrollSpeed * 30)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("SCORE: %d", data.Score), 10, 4)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("SPD: %d", speedKmh), 10, 20)
+	DebugPrintScaled(screen, fmt.Sprintf("SCORE: %d", data.Score), 10, 4)
+	DebugPrintScaled(screen, fmt.Sprintf("SPD: %d", speedKmh), 10, 20)
 
 	// Combo.
 	if data.ComboMultiplier > 1 {
@@ -41,7 +40,7 @@ func DrawHUD(screen *ebiten.Image, data HUDData) {
 		}
 		DrawRect(screen, float64(cx)-4, 2, float64(len(comboText))*6+8, 14,
 			color.RGBA{0x20, 0x80, 0x10, barAlpha})
-		ebitenutil.DebugPrintAt(screen, comboText, cx, 4)
+		DebugPrintScaled(screen, comboText, cx, 4)
 	}
 
 	// Fuel bar.
@@ -60,7 +59,7 @@ func DrawHUD(screen *ebiten.Image, data HUDData) {
 		fuelClr = color.RGBA{0xCC, 0x00, 0x00, 0xFF} // red
 	}
 	DrawRect(screen, barX, barY, fill, barH, fuelClr)
-	ebitenutil.DebugPrintAt(screen, "FUEL", int(barX), 18)
+	DebugPrintScaled(screen, "FUEL", int(barX), 18)
 
 	// Nitro charges.
 	nitroX := int(barX) + 40
@@ -69,7 +68,7 @@ func DrawHUD(screen *ebiten.Image, data HUDData) {
 		DrawRect(screen, nx, 20, 6, 6, color.RGBA{0xFF, 0xDD, 0x00, 0xFF})
 	}
 	if data.NitroActive {
-		ebitenutil.DebugPrintAt(screen, "NITRO!", int(barX)+40, 30)
+		DebugPrintScaled(screen, "NITRO!", int(barX)+40, 30)
 	}
 }
 
@@ -98,23 +97,23 @@ func DrawGameOver(screen *ebiten.Image, data GameOverData) {
 	if data.Busted {
 		title = "B U S T E D !"
 	}
-	ebitenutil.DebugPrintAt(screen, title, cx, cy)
+	DebugPrintScaled(screen, title, cx, cy)
 
 	cy += 35
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Score:       %d", data.Score), cx, cy)
+	DebugPrintScaled(screen, fmt.Sprintf("Score:       %d", data.Score), cx, cy)
 	if data.IsNewHighScore {
-		ebitenutil.DebugPrintAt(screen, "NEW!", cx+170, cy)
+		DebugPrintScaled(screen, "NEW!", cx+170, cy)
 	}
 	cy += 18
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Best:        %d", data.HighScore), cx, cy)
+	DebugPrintScaled(screen, fmt.Sprintf("Best:        %d", data.HighScore), cx, cy)
 	cy += 18
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Near Misses: %d", data.NearMisses), cx, cy)
+	DebugPrintScaled(screen, fmt.Sprintf("Near Misses: %d", data.NearMisses), cx, cy)
 	cy += 18
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Best Combo:  x%d", data.BestCombo), cx, cy)
+	DebugPrintScaled(screen, fmt.Sprintf("Best Combo:  x%d", data.BestCombo), cx, cy)
 	cy += 18
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Distance:    %.1f km", data.Distance), cx, cy)
+	DebugPrintScaled(screen, fmt.Sprintf("Distance:    %.1f km", data.Distance), cx, cy)
 	cy += 18
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Zone:        %s", data.ZoneName), cx, cy)
+	DebugPrintScaled(screen, fmt.Sprintf("Zone:        %s", data.ZoneName), cx, cy)
 
 	// Selection.
 	cy += 35
@@ -124,17 +123,17 @@ func DrawGameOver(screen *ebiten.Image, data GameOverData) {
 	} else {
 		menuMarker = "> "
 	}
-	ebitenutil.DebugPrintAt(screen, retryMarker+"RETRY", cx+20, cy)
-	ebitenutil.DebugPrintAt(screen, menuMarker+"MENU", cx+120, cy)
+	DebugPrintScaled(screen, retryMarker+"RETRY", cx+20, cy)
+	DebugPrintScaled(screen, menuMarker+"MENU", cx+120, cy)
 
 	// Total score.
 	cy += 30
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Total Score: %d", data.TotalScore), cx, cy)
+	DebugPrintScaled(screen, fmt.Sprintf("Total Score: %d", data.TotalScore), cx, cy)
 
 	// Unlock notifications.
 	for i, name := range data.NewUnlocks {
-		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("\"%s\" unlocked!", name), cx, cy+18+i*16)
+		DebugPrintScaled(screen, fmt.Sprintf("\"%s\" unlocked!", name), cx, cy+18+i*16)
 	}
 
-	ebitenutil.DebugPrintAt(screen, "Left/Right - select   Enter - confirm", 40, ScreenHeight-30)
+	DebugPrintScaled(screen, "Left/Right - select   Enter - confirm", 40, ScreenHeight-30)
 }

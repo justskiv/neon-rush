@@ -22,11 +22,13 @@ const (
 
 // DecorObject is a single decorative element alongside the road.
 type DecorObject struct {
-	X, Y          float64
-	Width, Height float64
-	Type          DecorType
-	Color         color.RGBA
-	WindowLit     [6]bool // for buildings: which windows are lit
+	X, Y            float64
+	Width, Height   float64
+	Type            DecorType
+	Color           color.RGBA
+	WindowLit       [6]bool  // for buildings: which windows are lit
+	SpriteIdx       int      // index into sprite arrays (buildings)
+	ParallaxFactor  float64  // scroll speed multiplier (0.6 for far decor, 1.0 for road-edge)
 }
 
 // DecorSystem manages scrolling decorations on both sides of the road.
@@ -59,7 +61,11 @@ func (ds *DecorSystem) Update(scrollSpeed float64, zoneID ZoneID, palette ZonePa
 func updateDecorSide(objs []DecorObject, scrollSpeed float64) []DecorObject {
 	n := 0
 	for i := range objs {
-		objs[i].Y += scrollSpeed
+		pf := objs[i].ParallaxFactor
+		if pf == 0 {
+			pf = 1.0
+		}
+		objs[i].Y += scrollSpeed * pf
 		if objs[i].Y-objs[i].Height <= ScreenHeight {
 			objs[n] = objs[i]
 			n++
@@ -112,8 +118,10 @@ func (ds *DecorSystem) spawnBuilding(left bool, palette ZonePalette) {
 	obj := DecorObject{
 		X: x, Y: -h,
 		Width: w, Height: h,
-		Type:  DecorBuilding,
-		Color: darken(palette.Background, 0.6),
+		Type:           DecorBuilding,
+		Color:          darken(palette.Background, 0.6),
+		SpriteIdx:      rand.IntN(NumBuildingVariants),
+		ParallaxFactor: DecorParallaxFactor,
 	}
 	for i := range obj.WindowLit {
 		obj.WindowLit[i] = rand.IntN(3) != 0
@@ -133,8 +141,9 @@ func (ds *DecorSystem) spawnLampPost(left bool, palette ZonePalette) {
 	obj := DecorObject{
 		X: x, Y: -60,
 		Width: 2, Height: 55,
-		Type:  DecorLampPost,
-		Color: color.RGBA{0x88, 0x88, 0x88, 0xFF},
+		Type:           DecorLampPost,
+		Color:          color.RGBA{0x88, 0x88, 0x88, 0xFF},
+		ParallaxFactor: DecorParallaxFactor,
 	}
 	if left {
 		ds.Left = append(ds.Left, obj)
@@ -151,8 +160,9 @@ func (ds *DecorSystem) spawnBush(left bool) {
 	obj := DecorObject{
 		X: x, Y: -12,
 		Width: 10 + rand.Float64()*8, Height: 8 + rand.Float64()*6,
-		Type:  DecorBush,
-		Color: color.RGBA{0x22, 0x66, 0x22, 0xFF},
+		Type:           DecorBush,
+		Color:          color.RGBA{0x22, 0x66, 0x22, 0xFF},
+		ParallaxFactor: DecorParallaxFactor,
 	}
 	if left {
 		ds.Left = append(ds.Left, obj)
@@ -218,8 +228,9 @@ func (ds *DecorSystem) spawnBillboard(left bool) {
 	obj := DecorObject{
 		X: x, Y: -22,
 		Width: 30, Height: 18,
-		Type:  DecorBillboard,
-		Color: colors[rand.IntN(len(colors))],
+		Type:           DecorBillboard,
+		Color:          colors[rand.IntN(len(colors))],
+		ParallaxFactor: DecorParallaxFactor,
 	}
 	if left {
 		ds.Left = append(ds.Left, obj)
@@ -228,17 +239,30 @@ func (ds *DecorSystem) spawnBillboard(left bool) {
 	}
 }
 
-func (ds *DecorSystem) Draw(screen *ebiten.Image, palette ZonePalette) {
-	drawDecorSide(screen, ds.Left, palette)
-	drawDecorSide(screen, ds.Right, palette)
+func (ds *DecorSystem) Draw(screen *ebiten.Image, palette ZonePalette, sprites *SpriteCache) {
+	drawDecorSide(screen, ds.Left, palette, sprites)
+	drawDecorSide(screen, ds.Right, palette, sprites)
 }
 
-func drawDecorSide(screen *ebiten.Image, objs []DecorObject, palette ZonePalette) {
+func drawDecorSide(screen *ebiten.Image, objs []DecorObject, palette ZonePalette, sprites *SpriteCache) {
 	for _, obj := range objs {
 		switch obj.Type {
 		case DecorBuilding:
-			DrawRect(screen, obj.X, obj.Y, obj.Width, obj.Height, obj.Color)
-			// Windows: small dots.
+			rs := renderScaleGlobal
+			bldg := sprites.Buildings[obj.SpriteIdx]
+			if bldg != nil {
+				op := &ebiten.DrawImageOptions{}
+				// Scale to match the requested building size in render pixels.
+				bw, bh := bldg.Bounds().Dx(), bldg.Bounds().Dy()
+				sx := obj.Width * rs / float64(bw)
+				sy := obj.Height * rs / float64(bh)
+				op.GeoM.Scale(sx, sy)
+				op.GeoM.Translate(obj.X*rs, obj.Y*rs)
+				// Tint with zone background color.
+				op.ColorScale.ScaleWithColor(obj.Color)
+				screen.DrawImage(bldg, op)
+			}
+			// Window overlays (drawn over sprite, colored by zone accent).
 			winSize := 3.0
 			cols := int(obj.Width / 8)
 			rows := int(obj.Height / 12)
@@ -253,10 +277,7 @@ func drawDecorSide(screen *ebiten.Image, objs []DecorObject, palette ZonePalette
 			}
 
 		case DecorLampPost:
-			DrawRect(screen, obj.X, obj.Y, obj.Width, obj.Height, obj.Color)
-			// Light at top.
-			DrawRect(screen, obj.X-2, obj.Y-2, 6, 4,
-				color.RGBA{0xFF, 0xFF, 0xAA, 0xCC})
+			drawSprite(screen, sprites.LampPost, obj.X+1, obj.Y+obj.Height/2)
 
 		case DecorBush:
 			DrawRect(screen, obj.X, obj.Y, obj.Width, obj.Height, obj.Color)
@@ -266,18 +287,14 @@ func drawDecorSide(screen *ebiten.Image, objs []DecorObject, palette ZonePalette
 
 		case DecorCactus:
 			DrawRect(screen, obj.X, obj.Y, obj.Width, obj.Height, obj.Color)
-			// Arms.
 			armY := obj.Y + obj.Height*0.3
 			DrawRect(screen, obj.X-4, armY, 4, 3, obj.Color)
 			DrawRect(screen, obj.X+obj.Width, armY+8, 4, 3, obj.Color)
 
 		case DecorBillboard:
-			// Support pole.
 			DrawRect(screen, obj.X+obj.Width/2-1, obj.Y+obj.Height, 2, 10,
 				color.RGBA{0x66, 0x66, 0x66, 0xFF})
-			// Billboard face.
 			DrawRect(screen, obj.X, obj.Y, obj.Width, obj.Height, obj.Color)
-			// Border.
 			DrawRect(screen, obj.X, obj.Y, obj.Width, 2,
 				color.RGBA{0xFF, 0xFF, 0xFF, 0x88})
 		}

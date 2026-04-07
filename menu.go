@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 // MenuState holds main menu state.
@@ -32,8 +31,8 @@ func DrawMenu(screen *ebiten.Image, menu *MenuState, save *SaveData) {
 	DrawRect(screen, 0, 0, ScreenWidth, ScreenHeight, colorOverlay)
 
 	// Title.
-	ebitenutil.DebugPrintAt(screen, "N  E  O  N", ScreenWidth/2-32, 120)
-	ebitenutil.DebugPrintAt(screen, "R  U  S  H", ScreenWidth/2-32, 140)
+	DebugPrintScaled(screen, "N  E  O  N", ScreenWidth/2-32, 120)
+	DebugPrintScaled(screen, "R  U  S  H", ScreenWidth/2-32, 140)
 
 	// Menu items.
 	items := []string{"PLAY", "GARAGE"}
@@ -42,15 +41,15 @@ func DrawMenu(screen *ebiten.Image, menu *MenuState, save *SaveData) {
 		if i == menu.Selection {
 			marker = "> "
 		}
-		ebitenutil.DebugPrintAt(screen, marker+item, ScreenWidth/2-30, 260+i*22)
+		DebugPrintScaled(screen, marker+item, ScreenWidth/2-30, 260+i*22)
 	}
 
 	// High score.
 	if save.HighScore > 0 {
-		ebitenutil.DebugPrintAt(screen,
+		DebugPrintScaled(screen,
 			fmt.Sprintf("HIGH SCORE: %d", save.HighScore),
 			ScreenWidth/2-55, ScreenHeight-60)
 	}
 
-	ebitenutil.DebugPrintAt(screen, "Up/Down - select   Enter - confirm", 50, ScreenHeight-30)
+	DebugPrintScaled(screen, "Up/Down - select   Enter - confirm", 50, ScreenHeight-30)
 }

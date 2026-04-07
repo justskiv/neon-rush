@@ -5,7 +5,6 @@ import (
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 // CarSpecial defines unique car abilities.
@@ -45,63 +44,74 @@ var specialNames = map[CarSpecial]string{
 }
 
 // DrawGarage renders the garage screen.
-func DrawGarage(screen *ebiten.Image, selectedIdx int, save *SaveData) {
+func DrawGarage(screen *ebiten.Image, selectedIdx int, save *SaveData, sprites *SpriteCache) {
 	screen.Fill(color.RGBA{0x0D, 0x0D, 0x1A, 0xFF})
 
-	ebitenutil.DebugPrintAt(screen, "G A R A G E", ScreenWidth/2-35, 30)
+	DebugPrintScaled(screen, "G A R A G E", ScreenWidth/2-35, 30)
 
 	car := PlayerCars[selectedIdx]
 	unlocked := save.IsCarUnlocked(selectedIdx)
 
-	// Car preview (large rectangle).
-	previewW, previewH := 60.0, 100.0
-	px := float64(ScreenWidth)/2 - previewW/2
-	py := 80.0
-	previewClr := car.Color
-	if !unlocked {
-		previewClr = color.RGBA{0x44, 0x44, 0x44, 0xFF}
+	// Car preview (vector sprite, displayed at 2x logical size).
+	previewCX := float64(ScreenWidth) / 2
+	previewCY := 80.0 + float64(PlayerSpriteH)
+	if unlocked {
+		rs := renderScaleGlobal
+		op := &ebiten.DrawImageOptions{}
+		img := sprites.PlayerCars[selectedIdx]
+		iw, ih := img.Bounds().Dx(), img.Bounds().Dy()
+		// Show at 2x logical size, scaled to render resolution.
+		previewScale := 2.0 * rs / SpriteScale
+		op.GeoM.Translate(-float64(iw)/2, -float64(ih)/2)
+		op.GeoM.Scale(previewScale, previewScale)
+		op.GeoM.Translate(previewCX*rs, previewCY*rs)
+		op.Filter = ebiten.FilterLinear
+		screen.DrawImage(img, op)
+	} else {
+		previewW, previewH := 60.0, 100.0
+		DrawRect(screen, previewCX-previewW/2, previewCY-previewH/2, previewW, previewH,
+			color.RGBA{0x44, 0x44, 0x44, 0xFF})
 	}
-	DrawRect(screen, px, py, previewW, previewH, previewClr)
 
 	// Arrows.
-	ebitenutil.DebugPrintAt(screen, "<", int(px)-20, int(py)+40)
-	ebitenutil.DebugPrintAt(screen, ">", int(px+previewW)+10, int(py)+40)
+	DebugPrintScaled(screen, "<", int(previewCX)-50, int(previewCY))
+	DebugPrintScaled(screen, ">", int(previewCX)+40, int(previewCY))
 
 	// Car name.
-	nameY := int(py + previewH + 15)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("\"%s\"", car.Name), ScreenWidth/2-30, nameY)
+	nameY := int(previewCY) + PlayerSpriteH + 10
+	DebugPrintScaled(screen, fmt.Sprintf("\"%s\"", car.Name), ScreenWidth/2-30, nameY)
 
 	// Stats.
 	statsY := nameY + 25
 	drawStatBar(screen, "SPD", car.SpeedMod, 1.3, 100, statsY)
 	drawStatBar(screen, "MGN", car.ManeuverMod, 1.2, 100, statsY+16)
 	drawStatBar(screen, "NOS", float64(car.MaxNitro)/3.0, 1.0, 100, statsY+32)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("SPC: %s", specialNames[car.Special]), 100, statsY+48)
+	DebugPrintScaled(screen, fmt.Sprintf("SPC: %s", specialNames[car.Special]), 100, statsY+48)
 
 	// Unlock status.
 	statusY := statsY + 72
 	if unlocked {
 		if save.SelectedCar == selectedIdx {
-			ebitenutil.DebugPrintAt(screen, "[SELECTED]", ScreenWidth/2-32, statusY)
+			DebugPrintScaled(screen, "[SELECTED]", ScreenWidth/2-32, statusY)
 		} else {
-			ebitenutil.DebugPrintAt(screen, "[ENTER to SELECT]", ScreenWidth/2-52, statusY)
+			DebugPrintScaled(screen, "[ENTER to SELECT]", ScreenWidth/2-52, statusY)
 		}
 	} else {
-		ebitenutil.DebugPrintAt(screen,
+		DebugPrintScaled(screen,
 			fmt.Sprintf("LOCKED - %d pts required", car.UnlockScore),
 			60, statusY)
 	}
 
 	// Total score.
-	ebitenutil.DebugPrintAt(screen,
+	DebugPrintScaled(screen,
 		fmt.Sprintf("Total Score: %d", save.TotalScore),
 		ScreenWidth/2-55, ScreenHeight-60)
 
-	ebitenutil.DebugPrintAt(screen, "Left/Right - browse   Esc - back", 50, ScreenHeight-30)
+	DebugPrintScaled(screen, "Left/Right - browse   Esc - back", 50, ScreenHeight-30)
 }
 
 func drawStatBar(screen *ebiten.Image, label string, value, maxVal float64, x, y int) {
-	ebitenutil.DebugPrintAt(screen, label+":", x, y)
+	DebugPrintScaled(screen, label+":", x, y)
 	barX := float64(x + 35)
 	barW := 100.0
 	DrawRect(screen, barX, float64(y+2), barW, 8, color.RGBA{0x33, 0x33, 0x33, 0xFF})

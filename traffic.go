@@ -17,6 +17,7 @@ type TrafficCar struct {
 	CarType       CarType
 
 	NearMissChecked bool
+	ColorVariant    int // index into sprite color variants
 
 	// Sport lane-change fields.
 	LaneChangeTimer int
@@ -51,24 +52,23 @@ func SpawnTraffic(existing []*TrafficCar, scrollSpeed float64, tickCount int) *T
 			CarType: ct,
 		}
 
+		car.Speed = scrollSpeed * def.SpeedRatio
 		switch ct {
 		case CarTypeSedan:
-			car.Color = sedanColor()
-			car.Speed = scrollSpeed * def.SpeedRatio
+			car.ColorVariant = rand.IntN(len(SedanColors))
+			car.Color = SedanColors[car.ColorVariant]
 		case CarTypeTruck:
-			car.Color = truckColor()
-			car.Speed = scrollSpeed * def.SpeedRatio
+			car.ColorVariant = rand.IntN(len(TruckColors))
+			car.Color = TruckColors[car.ColorVariant]
 		case CarTypeSport:
-			car.Color = sportColor()
-			car.Speed = scrollSpeed * def.SpeedRatio
+			car.ColorVariant = rand.IntN(len(SportColors))
+			car.Color = SportColors[car.ColorVariant]
 			car.LaneChangeTimer = 60 + rand.IntN(61)
 		case CarTypePolice:
 			car.Color = color.RGBA{0x22, 0x22, 0x44, 0xFF}
-			car.Speed = scrollSpeed * def.SpeedRatio
 			car.ChaseTimer = 30
 		case CarTypeOncoming:
 			car.Color = color.RGBA{0x33, 0x33, 0x33, 0xFF}
-			car.Speed = scrollSpeed * def.SpeedRatio // stored as positive; movement handled specially
 		}
 
 		return car
@@ -284,34 +284,39 @@ func updateSportLaneChange(c *TrafficCar) {
 	}
 }
 
-func (c *TrafficCar) Draw(screen *ebiten.Image) {
-	DrawRect(screen, c.X-c.Width/2, c.Y-c.Height/2, c.Width, c.Height, c.Color)
-
+func (c *TrafficCar) Draw(screen *ebiten.Image, sprites *SpriteCache) {
 	switch c.CarType {
+	case CarTypeSedan:
+		drawSprite(screen, sprites.TrafficSedan[c.ColorVariant], c.X, c.Y)
+
 	case CarTypeTruck:
-		cabW, cabH := c.Width-6, 14.0
-		cabClr := color.RGBA{c.Color.R + 20, c.Color.G + 20, c.Color.B + 20, 0xFF}
-		DrawRect(screen, c.X-cabW/2, c.Y-c.Height/2, cabW, cabH, cabClr)
+		drawSprite(screen, sprites.TrafficTruck[c.ColorVariant], c.X, c.Y)
+
+	case CarTypeSport:
+		drawSprite(screen, sprites.TrafficSport[c.ColorVariant], c.X, c.Y)
+		// Blinking turn signal when changing lane.
+		if c.ChangingLane && c.TickAge%10 < 5 {
+			sigX := c.X - c.Width/2 - 1
+			if c.TargetX > c.X {
+				sigX = c.X + c.Width/2 - 2
+			}
+			drawSprite(screen, sprites.TurnSignal, sigX, c.Y)
+		}
 
 	case CarTypePolice:
-		// White stripe.
-		DrawRect(screen, c.X-c.Width/2+2, c.Y-5, c.Width-4, 4,
-			color.RGBA{0xFF, 0xFF, 0xFF, 0xFF})
-		// Siren: alternating red/blue.
-		sirenClr := color.RGBA{0xFF, 0x00, 0x00, 0xFF}
-		if c.TickAge%20 < 10 {
-			sirenClr = color.RGBA{0x00, 0x00, 0xFF, 0xFF}
-		}
-		DrawRect(screen, c.X-4, c.Y-c.Height/2+2, 8, 4, sirenClr)
+		drawSprite(screen, sprites.TrafficPolice, c.X, c.Y)
+		// Animated siren on top.
+		sirenFrame := (c.TickAge / 8) % 2
+		drawSprite(screen, sprites.PoliceSiren[sirenFrame], c.X, c.Y-c.Height/2+5)
 
 	case CarTypeOncoming:
-		// Headlights: two yellow dots at front (bottom of car since it faces us).
-		headClr := color.RGBA{0xFF, 0xFF, 0x44, 0xFF}
+		// Headlight cone under the car.
+		alpha := float32(0.6)
 		if c.TickAge%30 < 5 {
-			headClr = color.RGBA{0xFF, 0xFF, 0x44, 0x80} // dim flash
+			alpha = 0.3
 		}
-		DrawRect(screen, c.X-c.Width/2+3, c.Y+c.Height/2-5, 5, 4, headClr)
-		DrawRect(screen, c.X+c.Width/2-8, c.Y+c.Height/2-5, 5, 4, headClr)
+		drawSpriteAlpha(screen, sprites.HeadlightCone, c.X, c.Y+c.Height/2+18, alpha)
+		drawSprite(screen, sprites.TrafficOncoming, c.X, c.Y)
 	}
 }
 
