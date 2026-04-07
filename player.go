@@ -21,6 +21,7 @@ type Player struct {
 	CarIndex        int
 	Blink           bool
 	Damaged         bool
+	RepairGlowTimer int
 }
 
 func NewPlayer() Player {
@@ -93,7 +94,12 @@ func (p *Player) Draw(screen *ebiten.Image, sprites *SpriteCache, tick int) {
 		// Red-tinted car body.
 		drawSpriteTinted(screen, sprites.PlayerCars[p.CarIndex], p.X, p.Y, 1.0, 0.6, 0.6)
 	} else {
-		drawSpriteAlpha(screen, sprites.PlayerGlow[p.CarIndex], p.X, p.Y, 0.5)
+		glowA := float32(0.5)
+		if p.RepairGlowTimer > 0 {
+			glowA = 0.5 + 0.4*float32(p.RepairGlowTimer)/20.0
+			p.RepairGlowTimer--
+		}
+		drawSpriteAlpha(screen, sprites.PlayerGlow[p.CarIndex], p.X, p.Y, glowA)
 		drawSprite(screen, sprites.PlayerCars[p.CarIndex], p.X, p.Y)
 	}
 }

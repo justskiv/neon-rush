@@ -228,6 +228,31 @@ func (ps *ParticleSystem) EmitFuelPickup(x, y float64) {
 	}
 }
 
+// EmitRepairBurst creates a cyan diamond burst on repair pickup.
+func (ps *ParticleSystem) EmitRepairBurst(x, y float64) {
+	for range 14 {
+		p := ps.spawn()
+		if p == nil {
+			return
+		}
+		angle := rand.Float64() * 2 * math.Pi
+		speed := 2.0 + rand.Float64()*2.0
+		ttl := 18 + rand.IntN(8)
+		clr := color.RGBA{0x00, 0xFF, 0xFF, 0xE0}
+		if rand.IntN(2) == 0 {
+			clr = color.RGBA{0xCC, 0xFF, 0xFF, 0xF0}
+		}
+		*p = Particle{
+			Active: true, Type: ParticleFlash, Shape: ShapeDiamond,
+			X: x, Y: y,
+			VX: speed * math.Cos(angle), VY: speed * math.Sin(angle),
+			W: 3.5, H: 3.5, TTL: ttl, MaxTTL: ttl,
+			Color: clr, FadeOut: true, Shrink: true,
+			RotSpeed: (rand.Float64() - 0.5) * 0.2,
+		}
+	}
+}
+
 // EmitSparks creates simple collision spark particles.
 func (ps *ParticleSystem) EmitSparks(x, y float64, count int) {
 	for range count {

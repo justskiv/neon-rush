@@ -446,11 +446,15 @@ func (g *Game) updatePlaying() {
 		case ItemRepair:
 			g.lastChanceAvailable = true
 			g.player.Damaged = false
-			g.audio.PlayPickup()
-			g.particles.EmitFuelPickup(it.X, it.Y) // cyan burst
+			g.player.RepairGlowTimer = 20
+			g.audio.PlayRepair()
+			g.particles.EmitRepairBurst(it.X, it.Y)
+			// Brief cyan screen flash.
+			DrawRect(g.offscreen, 0, 0, ScreenWidth, ScreenHeight,
+				color.RGBA{0x00, 0xFF, 0xDD, 0x23})
 			g.scoreState.FloatingTexts = append(g.scoreState.FloatingTexts, FloatingText{
-				X: it.X - 20, Y: it.Y, Text: "РЕМОНТ", TTL: 50, MaxTTL: 50,
-				Color: colorRepair, VY: -1.5, ScaleStart: 2.0, ScaleEnd: 1.2, ScaleTicks: 10,
+				X: it.X - 25, Y: it.Y, Text: "REPAIRED!", TTL: 60, MaxTTL: 60,
+				Color: colorRepair, VY: -1.5, ScaleStart: 2.5, ScaleEnd: 1.2, ScaleTicks: 12,
 			})
 		}
 	}
@@ -548,8 +552,8 @@ func (g *Game) drawPlaying(dst *ebiten.Image) {
 	if g.lastChanceActive {
 		DrawRect(dst, 0, 0, ScreenWidth, ScreenHeight, color.RGBA{0xFF, 0x00, 0x00, 40})
 		if (g.lastChanceTimer/8)%2 == 0 {
-			DebugPrintScaled(dst, "КОРПУС ПОВРЕЖДЁН", ScreenWidth/2-60, ScreenHeight/2-35)
-			DebugPrintScaled(dst, "Следующий удар - конец", ScreenWidth/2-70, ScreenHeight/2-15)
+			DebugPrintScaled(dst, "HULL DAMAGED", ScreenWidth/2-40, ScreenHeight/2-35)
+			DebugPrintScaled(dst, "Next hit is fatal", ScreenWidth/2-55, ScreenHeight/2-15)
 		}
 	}
 
@@ -561,6 +565,9 @@ func (g *Game) drawPlaying(dst *ebiten.Image) {
 		NitroActive:     g.nitroActive,
 		ComboMultiplier: g.scoreState.ComboMultiplier,
 		ComboTimer:      g.scoreState.ComboTimer,
+		Damaged:         g.player.Damaged,
+		RepairFlash:     g.player.RepairGlowTimer,
+		TickCount:       g.tickCount,
 	})
 	DrawFloatingTexts(dst, g.scoreState.FloatingTexts)
 }

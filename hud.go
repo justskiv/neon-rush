@@ -18,6 +18,9 @@ type HUDData struct {
 	NitroActive     bool
 	ComboMultiplier int
 	ComboTimer      int
+	Damaged         bool
+	RepairFlash     int // ticks remaining for "ИСПРАВЕН" flash
+	TickCount       int
 }
 
 // DrawHUD renders score, speed, fuel bar, combo, and nitro on screen.
@@ -69,6 +72,15 @@ func DrawHUD(screen *ebiten.Image, data HUDData) {
 	}
 	if data.NitroActive {
 		DebugPrintScaled(screen, "NITRO!", int(barX)+40, 30)
+	}
+
+	// Damage indicator.
+	if data.RepairFlash > 0 {
+		DrawRect(screen, ScreenWidth/2-55, 44, 110, 14, color.RGBA{0x00, 0xDD, 0xFF, 0x50})
+		DebugPrintScaled(screen, ">> REPAIRED <<", ScreenWidth/2-50, 46)
+	} else if data.Damaged {
+		DrawRect(screen, 8, 32, 78, 14, color.RGBA{0xFF, 0x22, 0x00, 0x88})
+		DebugPrintScaled(screen, "! DAMAGED !", 10, 34)
 	}
 }
 

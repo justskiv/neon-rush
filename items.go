@@ -40,15 +40,15 @@ var (
 func itemDef(t ItemType) (w, h float64, clr color.RGBA) {
 	switch t {
 	case ItemFuel:
-		return 18, 22, colorFuel
+		return 22, 26, colorFuel
 	case ItemNitro:
-		return 20, 20, colorNitro
+		return 24, 24, colorNitro
 	case ItemOil:
 		return 20, 14, colorOil
 	case ItemCoin:
-		return 14, 14, colorCoin
+		return 18, 18, colorCoin
 	case ItemRepair:
-		return 16, 16, colorRepair
+		return 22, 22, colorRepair
 	}
 	return 10, 10, colorCoin
 }
@@ -210,7 +210,7 @@ func SpawnCoinLine(existing []*Item, traffic []*TrafficCar) []*Item {
 		for i := range count {
 			coins = append(coins, &Item{
 				X: cx, Y: -10 - float64(i)*30,
-				Width: 14, Height: 14,
+				Width: 18, Height: 18,
 				Type: ItemCoin, Color: colorCoin,
 			})
 		}

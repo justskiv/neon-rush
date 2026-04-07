@@ -21,6 +21,7 @@ type AudioSystem struct {
 	sfxPickup     []byte
 	sfxNitro      []byte
 	sfxCombo      []byte
+	sfxRepair     []byte
 }
 
 // NewAudioSystem creates the audio context and generates all sound effects.
@@ -51,6 +52,7 @@ func NewAudioSystem() *AudioSystem {
 		sfxPickup:    generatePickup(),
 		sfxNitro:     generateNitroSFX(),
 		sfxCombo:     generateCombo(),
+		sfxRepair:    generateRepair(),
 	}
 }
 
@@ -75,6 +77,7 @@ func (a *AudioSystem) PlayWoosh(tier NearMissTier) {
 	a.playSFX(a.sfxWoosh[idx], vol)
 }
 func (a *AudioSystem) PlayCrash()  { a.playSFX(a.sfxCrash, 0.35) }
+func (a *AudioSystem) PlayRepair() { a.playSFX(a.sfxRepair, 0.30) }
 func (a *AudioSystem) PlayPickup() { a.playSFX(a.sfxPickup, 0.30) }
 func (a *AudioSystem) PlayNitro()  { a.playSFX(a.sfxNitro, 0.25) }
 func (a *AudioSystem) PlayCombo()  { a.playSFX(a.sfxCombo, 0.20) }
@@ -244,6 +247,37 @@ func generateCombo() []byte {
 		freq := 400.0 + 400.0*progress // 400→800 Hz
 		env := 1.0 - progress
 		sample := math.Sin(2*math.Pi*freq*t) * env * 0.35
+		writeSample16(buf, i, sample)
+	}
+	return buf
+}
+
+func generateRepair() []byte {
+	dur := 0.25
+	n := int(dur * sampleRate)
+	buf := make([]byte, n*4)
+	for i := range n {
+		t := float64(i) / float64(sampleRate)
+		p := float64(i) / float64(n)
+
+		// Ascending sweep: 400→1200 Hz (quadratic = "powering up").
+		freq := 400.0 + 800.0*p*p
+		root := math.Sin(2 * math.Pi * freq * t)
+		third := math.Sin(2*math.Pi*freq*1.26*t) * 0.5
+		fifth := math.Sin(2*math.Pi*freq*1.5*t) * 0.35
+
+		// Envelope: fast attack, smooth decay.
+		env := 1.0 - p
+		if p < 0.1 {
+			env = p / 0.1
+		}
+		// Sparkle noise in first 30%.
+		sparkle := 0.0
+		if p < 0.3 {
+			sparkle = (rand.Float64()*2 - 1) * 0.12 * (1.0 - p/0.3)
+		}
+
+		sample := (root*0.4 + third*0.4 + fifth*0.4 + sparkle) * env
 		writeSample16(buf, i, sample)
 	}
 	return buf
