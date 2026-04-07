@@ -26,13 +26,18 @@ type NearMissResult struct {
 	X, Y  float64 // position for effects
 }
 
-// FloatingText is a score popup that drifts upward and fades out.
+// FloatingText is a score popup that drifts upward with bounce animation.
 type FloatingText struct {
-	X, Y  float64
-	Text  string
-	TTL   int
-	MaxTTL int
-	Color color.RGBA
+	X, Y       float64
+	Text       string
+	TTL        int
+	MaxTTL     int
+	Color      color.RGBA
+	VY         float64 // vertical speed (negative = up)
+	Scale      float64 // current scale
+	ScaleStart float64 // initial scale for bounce
+	ScaleEnd   float64 // target scale after bounce
+	ScaleTicks int     // ticks for bounce animation
 }
 
 // ScoreState tracks combo multiplier and floating texts.
@@ -126,13 +131,31 @@ func CheckNearMiss(p *Player, car *TrafficCar, state *ScoreState, threshold, scr
 	baseClr := tierColors[tier]
 	clr := lerpColorWhite(baseClr, speedNorm*0.3)
 
+	// Scale by tier — bigger text for closer passes.
+	type tierScale struct {
+		start, end float64
+		ticks      int
+		vy         float64
+	}
+	scales := [5]tierScale{
+		{},
+		{2.5, 1.5, 10, -1.8},  // TierNear
+		{3.0, 1.8, 12, -2.0},  // TierClose
+		{3.5, 2.0, 14, -2.2},  // TierVeryClose
+		{4.5, 2.5, 16, -2.5},  // TierInsane
+	}
+	ts := scales[tier]
+	// Extra boost for high multipliers.
+	if totalMult >= 10 {
+		ts.start += 0.5
+		ts.end += 0.5
+	}
+
 	state.FloatingTexts = append(state.FloatingTexts, FloatingText{
-		X:      car.X - 50,
-		Y:      car.Y,
-		Text:   txt,
-		TTL:    60,
-		MaxTTL: 60,
-		Color:  clr,
+		X: car.X - 50, Y: car.Y,
+		Text: txt, TTL: 60, MaxTTL: 60,
+		Color: clr, VY: ts.vy,
+		ScaleStart: ts.start, ScaleEnd: ts.end, ScaleTicks: ts.ticks,
 	})
 
 	return NearMissResult{Bonus: bonus, Tier: tier, X: p.X, Y: p.Y}
@@ -160,7 +183,11 @@ func UpdateScoreState(state *ScoreState) {
 	n := 0
 	for i := range state.FloatingTexts {
 		ft := &state.FloatingTexts[i]
-		ft.Y -= 1
+		vy := ft.VY
+		if vy == 0 {
+			vy = -1 // default for backward compatibility
+		}
+		ft.Y += vy
 		ft.TTL--
 		if ft.TTL > 0 {
 			state.FloatingTexts[n] = state.FloatingTexts[i]
@@ -172,14 +199,29 @@ func UpdateScoreState(state *ScoreState) {
 
 // DrawFloatingTexts renders all active floating score texts with colored background.
 func DrawFloatingTexts(screen *ebiten.Image, texts []FloatingText) {
-	for _, ft := range texts {
+	for i := range texts {
+		ft := &texts[i]
 		alpha := float64(ft.TTL) / float64(ft.MaxTTL)
 		a := uint8(alpha * 180)
 		clr := color.RGBA{ft.Color.R, ft.Color.G, ft.Color.B, a}
-		// Tinted background bar behind text for visibility and color.
-		tw := float64(len(ft.Text)*6 + 4)
-		DrawRect(screen, ft.X-1, ft.Y-1, tw, 16, color.RGBA{0, 0, 0, a / 2})
-		DrawRect(screen, ft.X-1, ft.Y-1, 2, 16, clr)
-		DebugPrintScaled(screen, ft.Text, int(ft.X+3), int(ft.Y))
+
+		// Compute bounce scale.
+		scale := ft.ScaleEnd
+		if ft.ScaleTicks > 0 {
+			elapsed := ft.MaxTTL - ft.TTL
+			if elapsed < ft.ScaleTicks {
+				t := float64(elapsed) / float64(ft.ScaleTicks)
+				bounce := 1.0 - (1.0-t)*(1.0-t) // quadratic ease-out
+				scale = ft.ScaleStart + (ft.ScaleEnd-ft.ScaleStart)*bounce
+			}
+		}
+		if scale < 0.5 {
+			scale = 1.0
+		}
+
+		tw := float64(len(ft.Text)*6+4) * scale
+		DrawRect(screen, ft.X-1, ft.Y-1, tw, 16*scale, color.RGBA{0, 0, 0, a / 2})
+		DrawRect(screen, ft.X-1, ft.Y-1, 2, 16*scale, clr)
+		DebugPrintScaledSize(screen, ft.Text, int(ft.X+3), int(ft.Y), scale)
 	}
 }

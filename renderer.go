@@ -68,3 +68,37 @@ func DebugPrintScaled(screen *ebiten.Image, msg string, x, y int) {
 	op.GeoM.Translate(math.Round(float64(x)*rs), math.Round(float64(y)*rs))
 	screen.DrawImage(sub, op)
 }
+
+// DebugPrintScaledSize draws debug text with an additional scale multiplier for bounce effects.
+func DebugPrintScaledSize(screen *ebiten.Image, msg string, x, y int, extraScale float64) {
+	rs := renderScaleGlobal
+	tw := len(msg)*6 + 2
+	th := 16
+
+	if debugTextBuf == nil || debugTextBuf.Bounds().Dx() < tw || debugTextBuf.Bounds().Dy() < th {
+		newW := tw + 100
+		if debugTextBuf != nil && debugTextBuf.Bounds().Dx() > newW {
+			newW = debugTextBuf.Bounds().Dx()
+		}
+		debugTextBuf = ebiten.NewImage(newW, th)
+	}
+	debugTextBuf.Clear()
+	ebitenutil.DebugPrintAt(debugTextBuf, msg, 0, 0)
+	sub := debugTextBuf.SubImage(image.Rect(0, 0, tw, th)).(*ebiten.Image)
+
+	intScale := math.Max(1, math.Round(rs))
+	totalScale := intScale * extraScale
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(totalScale, totalScale)
+	op.GeoM.Translate(math.Round(float64(x)*rs), math.Round(float64(y)*rs))
+	screen.DrawImage(sub, op)
+}
+
+// drawRectRaw draws a rectangle WITHOUT renderScale (for init-time image building).
+func drawRectRaw(dst *ebiten.Image, x, y, w, h float64, clr color.RGBA) {
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(w, h)
+	op.GeoM.Translate(x, y)
+	op.ColorScale.ScaleWithColor(clr)
+	dst.DrawImage(pixel, op)
+}

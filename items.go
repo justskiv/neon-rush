@@ -16,6 +16,7 @@ const (
 	ItemNitro
 	ItemOil
 	ItemCoin
+	ItemRepair
 )
 
 // Item is a pickup object on the road.
@@ -31,7 +32,8 @@ var (
 	colorFuel  = color.RGBA{0x00, 0xDD, 0x00, 0xFF}
 	colorNitro = color.RGBA{0xFF, 0xDD, 0x00, 0xFF}
 	colorOil   = color.RGBA{0x44, 0x33, 0x22, 0x99}
-	colorCoin  = color.RGBA{0xFF, 0xCC, 0x00, 0xFF}
+	colorCoin   = color.RGBA{0xFF, 0xCC, 0x00, 0xFF}
+	colorRepair = color.RGBA{0x00, 0xDD, 0xFF, 0xFF}
 )
 
 // SpawnItem creates a pickup on a random free lane.
@@ -48,6 +50,8 @@ func SpawnItem(itemType ItemType, existing []*Item, traffic []*TrafficCar) *Item
 		w, h, clr = 20, 14, colorOil
 	case ItemCoin:
 		w, h, clr = 10, 10, colorCoin
+	case ItemRepair:
+		w, h, clr = 16, 16, colorRepair
 	}
 
 	start := rand.IntN(LaneCount)
@@ -144,6 +148,10 @@ func (it *Item) Draw(screen *ebiten.Image, sprites *SpriteCache) {
 	case ItemCoin:
 		frame := (it.TickAge / 8) % 4
 		drawSprite(screen, sprites.Coin[frame], it.X, it.Y)
+	case ItemRepair:
+		glowAlpha := float32(0.3 + 0.25*math.Sin(float64(it.TickAge)*0.15))
+		drawSpriteAlpha(screen, sprites.RepairGlow, it.X, it.Y, glowAlpha)
+		drawSprite(screen, sprites.RepairKit, it.X, it.Y)
 	}
 }
 

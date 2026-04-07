@@ -30,6 +30,9 @@ type SpriteCache struct {
 	Coin      [4]*ebiten.Image
 	OilSpill  *ebiten.Image
 
+	RepairKit  *ebiten.Image
+	RepairGlow *ebiten.Image
+
 	Buildings [NumBuildingVariants]*ebiten.Image
 	LampPost  *ebiten.Image
 }
@@ -75,6 +78,20 @@ func drawSprite(screen, img *ebiten.Image, cx, cy float64) {
 	h := float64(img.Bounds().Dy()) * s
 	op.GeoM.Scale(s, s)
 	op.GeoM.Translate(cx*rs-w/2, cy*rs-h/2)
+	op.Filter = ebiten.FilterLinear
+	screen.DrawImage(img, op)
+}
+
+// drawSpriteTinted draws a sprite with RGB color scaling (for damage tint etc).
+func drawSpriteTinted(screen, img *ebiten.Image, cx, cy float64, r, g, b float32) {
+	rs := renderScaleGlobal
+	op := &ebiten.DrawImageOptions{}
+	s := rs / SpriteScale
+	w := float64(img.Bounds().Dx()) * s
+	h := float64(img.Bounds().Dy()) * s
+	op.GeoM.Scale(s, s)
+	op.GeoM.Translate(cx*rs-w/2, cy*rs-h/2)
+	op.ColorScale.Scale(r, g, b, 1)
 	op.Filter = ebiten.FilterLinear
 	screen.DrawImage(img, op)
 }
@@ -452,6 +469,8 @@ func (sc *SpriteCache) generateItemSprites() {
 	sc.NitroGlow = generateGlowCircle(20, 20, color.RGBA{0xFF, 0xD7, 0x00, 0x30})
 	sc.OilSpill = generateOilSpillSprite()
 	sc.generateCoinFrames()
+	sc.RepairKit = generateRepairSprite()
+	sc.RepairGlow = generateGlowCircle(18, 18, color.RGBA{0x00, 0xDD, 0xFF, 0x30})
 }
 
 func generateFuelCanSprite() *ebiten.Image {
@@ -542,6 +561,20 @@ func (sc *SpriteCache) generateCoinFrames() {
 	sc.Coin[2] = f2
 
 	sc.Coin[3] = f1
+}
+
+func generateRepairSprite() *ebiten.Image {
+	img := ebiten.NewImage(si(16), si(16))
+	clr := color.RGBA{0x00, 0xDD, 0xFF, 0xFF}
+	// Cross: vertical bar.
+	vector.FillPath(img, rectPath(6*S, 1*S, 4*S, 14*S), &vector.FillOptions{},
+		drawPathOpts(clr))
+	// Cross: horizontal bar.
+	vector.FillPath(img, rectPath(1*S, 6*S, 14*S, 4*S), &vector.FillOptions{},
+		drawPathOpts(clr))
+	// Bright center dot.
+	vector.FillCircle(img, 8*S, 8*S, 2*S, color.RGBA{0xAA, 0xFF, 0xFF, 0xFF}, true)
+	return img
 }
 
 func generateGlowCircle(w, h int, clr color.RGBA) *ebiten.Image {

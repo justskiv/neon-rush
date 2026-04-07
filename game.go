@@ -1,6 +1,7 @@
 package main
 
 import (
+	"image/color"
 	"math/rand/v2"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -46,15 +47,16 @@ type Game struct {
 	decor      DecorSystem
 	scoreState ScoreState
 	particles  ParticleSystem
+	speedLines SpeedLineSystem
 	braking    bool
 
 	audio          *AudioSystem
 	sprites        *SpriteCache
 	offscreen      *ebiten.Image
 	renderScale    float64 // ratio of render buffer to logical size
-	shakeTimer     int
-	shakeOffsetX   float64
-	shakeOffsetY   float64
+	shake          ScreenShake
+	chromatic      ChromaticAberration
+	freezeTimer    int
 	pauseSelection int
 	menu           MenuState
 
@@ -73,8 +75,12 @@ type Game struct {
 	gameOverSelection  int
 	newUnlocks         []string
 	isNewHighScore     bool
-	busted             bool
-	fuelEmpty          bool
+	busted              bool
+	fuelEmpty           bool
+	lastChanceAvailable bool
+	lastChanceActive    bool
+	lastChanceTimer     int
+	repairSpawnTimer    int
 }
 
 // NewGame creates and initializes a new game instance.
@@ -100,10 +106,15 @@ func NewGame() *Game {
 		renderScale:     1.0,
 		save:            LoadSave(),
 	}
+	InitVignette()
 	return g
 }
 
 func (g *Game) Update() error {
+	if g.freezeTimer > 0 {
+		g.freezeTimer--
+		return nil
+	}
 	switch g.state {
 	case StateMenu:
 		g.updateMenu()
@@ -201,14 +212,6 @@ func (g *Game) drawPaused(dst *ebiten.Image) {
 
 func (g *Game) updateGameOver() {
 	g.particles.Update()
-	if g.shakeTimer > 0 {
-		g.shakeTimer--
-		g.shakeOffsetX = (rand.Float64()*2 - 1) * 3
-		g.shakeOffsetY = (rand.Float64()*2 - 1) * 3
-	} else {
-		g.shakeOffsetX = 0
-		g.shakeOffsetY = 0
-	}
 
 	if IsLeftMenuPressed() || IsRightMenuPressed() {
 		g.gameOverSelection = 1 - g.gameOverSelection
@@ -263,6 +266,17 @@ func (g *Game) updatePlaying() {
 	g.score++
 	g.zone.Update()
 
+	// Last Chance timer.
+	if g.lastChanceActive {
+		g.lastChanceTimer--
+		if g.lastChanceTimer <= 0 {
+			g.lastChanceActive = false
+		}
+		g.player.Blink = (g.lastChanceTimer/4)%2 == 0
+	} else {
+		g.player.Blink = false
+	}
+
 	// Fuel consumption.
 	g.fuel -= g.fuelConsumption
 	if g.fuel <= 0 {
@@ -289,10 +303,14 @@ func (g *Game) updatePlaying() {
 		speedMod = SpeedBrakeFactor
 	}
 	effectiveSpeed := g.scrollSpeed * speedMod
+	if g.lastChanceActive {
+		effectiveSpeed *= LastChanceSpeedMult
+	}
 
 	g.road.Update(effectiveSpeed)
 	g.decor.Update(effectiveSpeed, g.zone.CurrentZone, g.zone.ActivePalette)
 	g.player.Update()
+	g.speedLines.Update(effectiveSpeed, MaxScrollSpeed, g.nitroActive)
 
 	// Rain particles.
 	if g.zone.CurrentZone == ZoneRain {
@@ -351,12 +369,24 @@ func (g *Game) updatePlaying() {
 		g.coinSpawnTimer = randRange(8*TPS, 15*TPS)
 	}
 
+	// Spawn repair kit (only when damaged, rare).
+	if g.player.Damaged && !g.lastChanceActive {
+		g.repairSpawnTimer--
+		if g.repairSpawnTimer <= 0 {
+			if item := SpawnItem(ItemRepair, g.items, g.traffic); item != nil {
+				g.items = append(g.items, item)
+			}
+			g.repairSpawnTimer = randRange(20*TPS, 40*TPS)
+		}
+	}
+
 	// Nitro activation.
 	if IsNitroPressed() && g.nitroCharges > 0 && !g.nitroActive {
 		g.nitroCharges--
 		g.nitroActive = true
 		g.nitroTimer = NitroDuration
 		g.audio.PlayNitro()
+		g.shake = ShakeNitroStart()
 	}
 	if g.nitroActive {
 		g.nitroTimer--
@@ -385,6 +415,7 @@ func (g *Game) updatePlaying() {
 			g.fuel = min(g.fuel+FuelCanBonus, FuelMax)
 			g.score += 25
 			g.audio.PlayPickup()
+			g.particles.EmitFuelPickup(it.X, it.Y)
 		case ItemNitro:
 			if g.nitroCharges < g.activeCar.MaxNitro {
 				g.nitroCharges++
@@ -393,13 +424,14 @@ func (g *Game) updatePlaying() {
 			g.audio.PlayPickup()
 		case ItemOil:
 			g.player.ApplyOilSpin()
-			g.shakeTimer = 5
+			g.shake = ShakeNearMiss()
 		case ItemCoin:
 			g.score += 100
 			g.coinLineCollected++
+			g.particles.EmitCoinPickup(it.X, it.Y)
 			g.scoreState.FloatingTexts = append(g.scoreState.FloatingTexts, FloatingText{
 				X: it.X - 15, Y: it.Y, Text: "+100", TTL: 40, MaxTTL: 40,
-				Color: colorCoin,
+				Color: colorCoin, VY: -1.5, ScaleStart: 1.5, ScaleEnd: 1.2, ScaleTicks: 8,
 			})
 			g.audio.PlayPickup()
 			if g.coinLineCollected == g.coinLineCount && g.coinLineCount > 0 {
@@ -408,9 +440,18 @@ func (g *Game) updatePlaying() {
 				g.scoreState.FloatingTexts = append(g.scoreState.FloatingTexts, FloatingText{
 					X: g.player.X - 50, Y: g.player.Y - 40,
 					Text: "PERFECT LINE! x2", TTL: 60, MaxTTL: 60,
-					Color: colorCoin,
+					Color: colorCoin, VY: -1, ScaleStart: 2.5, ScaleEnd: 1.2, ScaleTicks: 12,
 				})
 			}
+		case ItemRepair:
+			g.lastChanceAvailable = true
+			g.player.Damaged = false
+			g.audio.PlayPickup()
+			g.particles.EmitFuelPickup(it.X, it.Y) // cyan burst
+			g.scoreState.FloatingTexts = append(g.scoreState.FloatingTexts, FloatingText{
+				X: it.X - 20, Y: it.Y, Text: "РЕМОНТ", TTL: 50, MaxTTL: 50,
+				Color: colorRepair, VY: -1.5, ScaleStart: 2.0, ScaleEnd: 1.2, ScaleTicks: 10,
+			})
 		}
 	}
 
@@ -420,8 +461,9 @@ func (g *Game) updatePlaying() {
 		if res.Bonus > 0 {
 			g.score += res.Bonus
 			g.nearMissCount++
-			g.particles.EmitFlash(res.X, res.Y, res.Tier)
+			g.particles.EmitFlash(res.X, res.Y, car.X, res.Tier)
 			g.audio.PlayWoosh(res.Tier)
+			g.chromatic = NewChromaticAberration(res.Tier)
 			if g.scoreState.ComboMultiplier > g.peakCombo {
 				g.peakCombo = g.scoreState.ComboMultiplier
 				g.audio.PlayCombo()
@@ -436,6 +478,13 @@ func (g *Game) updatePlaying() {
 		g.particles.EmitBrakeTrails(g.player.X, g.player.Y+g.player.Height/2)
 	}
 
+	// Damage sparks: occasional sparks from rear of damaged car.
+	if g.player.Damaged && g.tickCount%8 == 0 {
+		g.particles.EmitSparks(
+			g.player.X+(rand.Float64()*12-6),
+			g.player.Y+g.player.Height/2, 2)
+	}
+
 	// Nitro flame particles.
 	if g.nitroActive && g.tickCount%2 == 0 {
 		g.particles.EmitNitroFlame(g.player.X, g.player.Y+g.player.Height/2)
@@ -443,25 +492,28 @@ func (g *Game) updatePlaying() {
 
 	g.particles.Update()
 
-	// Screen shake.
-	if g.shakeTimer > 0 {
-		g.shakeTimer--
-		g.shakeOffsetX = (rand.Float64()*2 - 1) * 3
-		g.shakeOffsetY = (rand.Float64()*2 - 1) * 3
-	} else {
-		g.shakeOffsetX = 0
-		g.shakeOffsetY = 0
-	}
-
-	// Check collisions (nitro and grace period grant invulnerability).
-	if cr := CheckPlayerTrafficCollision(&g.player, g.traffic); cr.Hit && !g.nitroActive && g.nitroGrace <= 0 {
+	// Check collisions: nitro/grace → ghost shield → Last Chance → game over.
+	if cr := CheckPlayerTrafficCollision(&g.player, g.traffic); cr.Hit && !g.nitroActive && g.nitroGrace <= 0 && !g.lastChanceActive {
 		if g.ghostShieldActive {
 			g.ghostShieldActive = false
-			g.particles.EmitFlash(g.player.X, g.player.Y, TierClose)
-			g.shakeTimer = 5
+			g.particles.EmitFlash(g.player.X, g.player.Y, cr.HitX, TierClose)
+			g.shake = ShakeNearMiss()
+		} else if g.lastChanceAvailable {
+			// Last Chance: slow-mo instead of death.
+			g.lastChanceAvailable = false
+			g.lastChanceActive = true
+			g.lastChanceTimer = LastChanceDuration
+			g.player.Damaged = true
+			g.freezeTimer = FreezeFrameCollision
+			g.shake = ShakeCollision()
+			g.particles.EmitCollisionBurst(cr.HitX, cr.HitY, g.activeCar.Color)
+			g.audio.PlayCrash()
+			g.scoreState.ComboMultiplier = 1
+			g.scoreState.ComboTimer = 0
 		} else {
-			g.particles.EmitSparks(cr.HitX, cr.HitY, 10)
-			g.shakeTimer = 10
+			g.particles.EmitCollisionBurst(cr.HitX, cr.HitY, g.activeCar.Color)
+			g.shake = ShakeCollision()
+			g.freezeTimer = FreezeFrameCollision
 			g.scoreState.ComboMultiplier = 1
 			g.scoreState.ComboTimer = 0
 			g.busted = cr.CarType == CarTypePolice
@@ -482,11 +534,23 @@ func (g *Game) drawPlaying(dst *ebiten.Image) {
 		car.Draw(dst, g.sprites)
 	}
 
-	g.player.Draw(dst, g.sprites)
+	g.player.Draw(dst, g.sprites, g.tickCount)
 	g.particles.Draw(dst)
+	g.speedLines.Draw(dst)
 
 	if g.zone.CurrentZone == ZoneRain {
 		DrawFogOverlay(dst)
+	}
+
+	DrawVignette(dst, g.scrollSpeed)
+
+	// Damaged state overlay.
+	if g.lastChanceActive {
+		DrawRect(dst, 0, 0, ScreenWidth, ScreenHeight, color.RGBA{0xFF, 0x00, 0x00, 40})
+		if (g.lastChanceTimer/8)%2 == 0 {
+			DebugPrintScaled(dst, "КОРПУС ПОВРЕЖДЁН", ScreenWidth/2-60, ScreenHeight/2-35)
+			DebugPrintScaled(dst, "Следующий удар - конец", ScreenWidth/2-70, ScreenHeight/2-15)
+		}
 	}
 
 	DrawHUD(dst, HUDData{
@@ -548,9 +612,35 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawGarage(dst)
 	}
 
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(g.shakeOffsetX*rs, g.shakeOffsetY*rs)
-	screen.DrawImage(g.offscreen, op)
+	ox, oy := g.shake.Update()
+	g.chromatic.Update()
+	caOffset := g.chromatic.Offset() * rs
+
+	if caOffset < 0.5 {
+		// Normal single blit.
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(ox*rs, oy*rs)
+		screen.DrawImage(g.offscreen, op)
+	} else {
+		// RGB channel separation: 3 additive passes.
+		opR := &ebiten.DrawImageOptions{}
+		opR.GeoM.Translate(ox*rs+caOffset, oy*rs)
+		opR.ColorScale.Scale(1, 0, 0, 1)
+		opR.Blend = ebiten.BlendLighter
+		screen.DrawImage(g.offscreen, opR)
+
+		opG := &ebiten.DrawImageOptions{}
+		opG.GeoM.Translate(ox*rs, oy*rs)
+		opG.ColorScale.Scale(0, 1, 0, 1)
+		opG.Blend = ebiten.BlendLighter
+		screen.DrawImage(g.offscreen, opG)
+
+		opB := &ebiten.DrawImageOptions{}
+		opB.GeoM.Translate(ox*rs-caOffset, oy*rs)
+		opB.ColorScale.Scale(0, 0, 1, 1)
+		opB.Blend = ebiten.BlendLighter
+		screen.DrawImage(g.offscreen, opB)
+	}
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -623,14 +713,19 @@ func (g *Game) reset() {
 	g.scoreState = NewScoreState()
 	g.particles = NewParticleSystem()
 	g.braking = false
-	g.shakeTimer = 0
-	g.shakeOffsetX = 0
-	g.shakeOffsetY = 0
+	g.shake = ScreenShake{}
+	g.chromatic = ChromaticAberration{}
+	g.freezeTimer = 0
+	g.speedLines = SpeedLineSystem{}
 	g.pauseSelection = 0
 	g.peakCombo = 0
 	g.nearMissCount = 0
 	g.busted = false
 	g.fuelEmpty = false
+	g.lastChanceAvailable = true
+	g.lastChanceActive = false
+	g.lastChanceTimer = 0
+	g.repairSpawnTimer = randRange(20*TPS, 40*TPS)
 	g.nitroGrace = 0
 	g.oilSpawnTimer = randRange(15*TPS, 25*TPS)
 	g.coinSpawnTimer = randRange(8*TPS, 15*TPS)

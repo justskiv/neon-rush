@@ -2,6 +2,7 @@ package main
 
 import (
 	"image/color"
+	"math"
 	"math/rand/v2"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -18,6 +19,8 @@ type Player struct {
 	SpinTimer       int
 	SpinForce       float64
 	CarIndex        int
+	Blink           bool
+	Damaged         bool
 }
 
 func NewPlayer() Player {
@@ -76,9 +79,23 @@ func (p *Player) Update() {
 	}
 }
 
-func (p *Player) Draw(screen *ebiten.Image, sprites *SpriteCache) {
-	drawSpriteAlpha(screen, sprites.PlayerGlow[p.CarIndex], p.X, p.Y, 0.5)
-	drawSprite(screen, sprites.PlayerCars[p.CarIndex], p.X, p.Y)
+func (p *Player) Draw(screen *ebiten.Image, sprites *SpriteCache, tick int) {
+	if p.Blink {
+		return
+	}
+
+	if p.Damaged {
+		// Erratic glow: two irrational-frequency sins = glitchy flicker.
+		glowA := float32(0.3 + 0.25*math.Sin(float64(tick)*0.31) +
+			0.15*math.Sin(float64(tick)*0.73))
+		drawSpriteAlpha(screen, sprites.PlayerGlow[p.CarIndex], p.X, p.Y, glowA)
+
+		// Red-tinted car body.
+		drawSpriteTinted(screen, sprites.PlayerCars[p.CarIndex], p.X, p.Y, 1.0, 0.6, 0.6)
+	} else {
+		drawSpriteAlpha(screen, sprites.PlayerGlow[p.CarIndex], p.X, p.Y, 0.5)
+		drawSprite(screen, sprites.PlayerCars[p.CarIndex], p.X, p.Y)
+	}
 }
 
 // ApplyOilSpin causes the player to lose control for 60 ticks.

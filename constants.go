@@ -64,4 +64,12 @@ const (
 	// Decor parallax.
 	DecorParallaxFactor = 0.6
 	NumBuildingVariants = 12
+
+	// Freeze frame durations (ticks).
+	FreezeFrameNearMiss  = 2
+	FreezeFrameCollision = 6
+
+	// Last Chance.
+	LastChanceDuration  = 90  // 1.5 seconds
+	LastChanceSpeedMult = 0.2 // 20% speed during slow-mo
 )
