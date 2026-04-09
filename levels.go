@@ -74,21 +74,25 @@ var zoneNames = [ZoneCount]string{
 
 // ZoneSystem manages zone transitions and palette interpolation.
 type ZoneSystem struct {
-	CurrentZone   ZoneID
-	ZoneTick      int
-	Transitioning bool
-	TransitionT   float64
-	ActivePalette ZonePalette
+	CurrentZone     ZoneID
+	ZoneTick        int
+	Transitioning   bool
+	TransitionT     float64
+	ActivePalette   ZonePalette
+	ZonesReached    int  // total zone transitions survived
+	JustTransitioned bool // set for one tick on zone change
 }
 
 func NewZoneSystem() ZoneSystem {
 	return ZoneSystem{
 		ActivePalette: zonePalettes[0],
+		ZonesReached:  1, // starting zone counts
 	}
 }
 
 func (zs *ZoneSystem) Update() {
 	zs.ZoneTick++
+	zs.JustTransitioned = false
 
 	transStart := ZoneDurationTicks - ZoneTransitionTicks
 	if zs.ZoneTick >= transStart && zs.ZoneTick < ZoneDurationTicks {
@@ -104,6 +108,8 @@ func (zs *ZoneSystem) Update() {
 	if zs.ZoneTick >= ZoneDurationTicks {
 		zs.CurrentZone = zs.nextZone()
 		zs.ZoneTick = 0
+		zs.ZonesReached++
+		zs.JustTransitioned = true
 	}
 }
 

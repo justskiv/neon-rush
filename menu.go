@@ -8,7 +8,7 @@ import (
 
 // MenuState holds main menu state.
 type MenuState struct {
-	Selection    int // 0=PLAY, 1=GARAGE
+	Selection    int // 0=PLAY, 1=DAILY, 2=GARAGE
 	BgRoad       Road
 	BgScrollTick int
 }
@@ -35,13 +35,18 @@ func DrawMenu(screen *ebiten.Image, menu *MenuState, save *SaveData) {
 	DebugPrintScaled(screen, "R  U  S  H", ScreenWidth/2-32, 140)
 
 	// Menu items.
-	items := []string{"PLAY", "GARAGE"}
+	daily := TodayChallenge()
+	dailyLabel := fmt.Sprintf("DAILY: %s", daily.Name)
+	if save.DailyDone == TodayDateStr() {
+		dailyLabel += " DONE"
+	}
+	items := []string{"PLAY", dailyLabel, "GARAGE"}
 	for i, item := range items {
 		marker := "  "
 		if i == menu.Selection {
 			marker = "> "
 		}
-		DebugPrintScaled(screen, marker+item, ScreenWidth/2-30, 260+i*22)
+		DebugPrintScaled(screen, marker+item, ScreenWidth/2-40, 260+i*22)
 	}
 
 	// High score.

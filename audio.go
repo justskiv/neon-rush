@@ -23,6 +23,7 @@ type AudioSystem struct {
 	sfxCombo      []byte
 	sfxRepair     []byte
 	sfxScrape     []byte
+	sfxArpeggio   []byte
 }
 
 // NewAudioSystem creates the audio context and generates all sound effects.
@@ -54,7 +55,8 @@ func NewAudioSystem() *AudioSystem {
 		sfxNitro:  generateNitroSFX(),
 		sfxCombo:  generateCombo(),
 		sfxRepair: generateRepair(),
-		sfxScrape: generateScrape(),
+		sfxScrape:   generateScrape(),
+		sfxArpeggio: generateArpeggio(),
 	}
 }
 
@@ -80,7 +82,8 @@ func (a *AudioSystem) PlayWoosh(tier NearMissTier) {
 }
 func (a *AudioSystem) PlayCrash()  { a.playSFX(a.sfxCrash, 0.35) }
 func (a *AudioSystem) PlayRepair() { a.playSFX(a.sfxRepair, 0.30) }
-func (a *AudioSystem) PlayScrape() { a.playSFX(a.sfxScrape, 0.15) }
+func (a *AudioSystem) PlayScrape()   { a.playSFX(a.sfxScrape, 0.15) }
+func (a *AudioSystem) PlayArpeggio() { a.playSFX(a.sfxArpeggio, 0.25) }
 func (a *AudioSystem) PlayPickup() { a.playSFX(a.sfxPickup, 0.30) }
 func (a *AudioSystem) PlayNitro()  { a.playSFX(a.sfxNitro, 0.25) }
 func (a *AudioSystem) PlayCombo()  { a.playSFX(a.sfxCombo, 0.20) }
@@ -302,6 +305,28 @@ func generateScrape() []byte {
 		// Low tone for grit.
 		tone := math.Sin(2*math.Pi*80*float64(i)/float64(sampleRate)) * 0.3
 		sample := (lpState*0.5 + tone) * env
+		writeSample16(buf, i, sample)
+	}
+	return buf
+}
+
+// generateArpeggio creates a quick ascending C5-E5-G5-C6 melody.
+func generateArpeggio() []byte {
+	notes := [4]float64{523.25, 659.25, 783.99, 1046.50}
+	noteDur := 0.06
+	totalDur := noteDur * float64(len(notes))
+	n := int(totalDur * sampleRate)
+	buf := make([]byte, n*4)
+	for i := range n {
+		t := float64(i) / float64(sampleRate)
+		noteIdx := int(t / noteDur)
+		if noteIdx >= len(notes) {
+			noteIdx = len(notes) - 1
+		}
+		localT := t - float64(noteIdx)*noteDur
+		env := 1.0 - localT/noteDur
+		freq := notes[noteIdx]
+		sample := math.Sin(2*math.Pi*freq*t) * env * 0.35
 		writeSample16(buf, i, sample)
 	}
 	return buf

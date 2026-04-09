@@ -85,7 +85,9 @@ const (
 	DriftOverheatForced = 30   // loss of control ticks
 	DriftCooldownMult   = 2.0
 	DriftRotationMax    = 0.28 // ~16 degrees
-	DriftScorePerTick   = 5
+	DriftScorePerTick   = 8
 	DriftNearMissMult   = 3.0
-	DriftPerfectBonus   = 200
+	DriftDurationTier2  = 60  // 1s → ×2
+	DriftDurationTier3  = 120 // 2s → ×3
+	DriftDangerMult     = 5   // shoulder drift multiplier
 )

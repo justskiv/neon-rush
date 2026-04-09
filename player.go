@@ -49,8 +49,11 @@ func newPlayerFromCar(car PlayerCarDef) Player {
 	}
 }
 
-func (p *Player) Update(curveOffset float64) {
+func (p *Player) Update(curveOffset float64, mirror bool) {
 	input := GetHorizontalInput()
+	if mirror {
+		input = -input
+	}
 
 	p.LateralVelocity += input * p.Acceleration
 	p.LateralVelocity *= PlayerFriction

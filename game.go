@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"image/color"
 	"math/rand/v2"
 
@@ -71,6 +70,8 @@ type Game struct {
 	fuelConsumption   float64
 	ghostShieldActive  bool
 	garageSelection    int
+	garageSection      int // 0=cars, 1=trails
+	trailSelection     int
 	oilSpawnTimer      int
 	coinSpawnTimer     int
 	coinLineCount      int
@@ -78,12 +79,16 @@ type Game struct {
 	gameOverSelection  int
 	newUnlocks         []string
 	isNewHighScore     bool
+	topSpeed           float64
 	busted              bool
 	fuelEmpty           bool
 	lastChanceAvailable bool
 	lastChanceActive    bool
 	lastChanceTimer     int
 	repairSpawnTimer    int
+	dailyMode           bool
+	dailyChallenge      DailyChallenge
+	milestones          MilestoneSystem
 }
 
 // NewGame creates and initializes a new game instance.
@@ -141,20 +146,27 @@ func (g *Game) updateMenu() {
 	if IsUpMenuPressed() {
 		g.menu.Selection--
 		if g.menu.Selection < 0 {
-			g.menu.Selection = 1
+			g.menu.Selection = 2
 		}
 	}
 	if IsDownMenuPressed() {
 		g.menu.Selection++
-		if g.menu.Selection > 1 {
+		if g.menu.Selection > 2 {
 			g.menu.Selection = 0
 		}
 	}
 	if IsRestartPressed() {
 		switch g.menu.Selection {
 		case 0: // PLAY
+			g.dailyMode = false
 			g.reset()
-		case 1: // GARAGE
+		case 1: // DAILY
+			if g.save.DailyDone != TodayDateStr() {
+				g.dailyMode = true
+				g.dailyChallenge = TodayChallenge()
+				g.reset()
+			}
+		case 2: // GARAGE
 			g.state = StateGarage
 		}
 	}
@@ -231,21 +243,45 @@ func (g *Game) updateGameOver() {
 // --- Garage (stub for now) ---
 
 func (g *Game) updateGarage() {
-	if IsLeftMenuPressed() {
-		g.garageSelection--
-		if g.garageSelection < 0 {
-			g.garageSelection = len(PlayerCars) - 1
-		}
+	if IsUpMenuPressed() || IsDownMenuPressed() {
+		g.garageSection = 1 - g.garageSection
 	}
-	if IsRightMenuPressed() {
-		g.garageSelection++
-		if g.garageSelection >= len(PlayerCars) {
-			g.garageSelection = 0
+	if g.garageSection == 0 {
+		// Car browsing.
+		if IsLeftMenuPressed() {
+			g.garageSelection--
+			if g.garageSelection < 0 {
+				g.garageSelection = len(PlayerCars) - 1
+			}
 		}
-	}
-	if IsRestartPressed() && g.save.IsCarUnlocked(g.garageSelection) {
-		g.save.SelectedCar = g.garageSelection
-		g.save.Save()
+		if IsRightMenuPressed() {
+			g.garageSelection++
+			if g.garageSelection >= len(PlayerCars) {
+				g.garageSelection = 0
+			}
+		}
+		if IsRestartPressed() && g.save.IsCarUnlocked(g.garageSelection) {
+			g.save.SelectedCar = g.garageSelection
+			g.save.Save()
+		}
+	} else {
+		// Trail browsing.
+		if IsLeftMenuPressed() {
+			g.trailSelection--
+			if g.trailSelection < 0 {
+				g.trailSelection = len(TrailDefs) - 1
+			}
+		}
+		if IsRightMenuPressed() {
+			g.trailSelection++
+			if g.trailSelection >= len(TrailDefs) {
+				g.trailSelection = 0
+			}
+		}
+		if IsRestartPressed() && g.save.IsTrailUnlocked(g.trailSelection) {
+			g.save.SelectedTrail = g.trailSelection
+			g.save.Save()
+		}
 	}
 	if IsEscPressed() {
 		g.state = StateMenu
@@ -253,10 +289,28 @@ func (g *Game) updateGarage() {
 }
 
 func (g *Game) drawGarage(dst *ebiten.Image) {
-	DrawGarage(dst, g.garageSelection, &g.save, g.sprites)
+	DrawGarage(dst, g.garageSelection, g.garageSection, g.trailSelection, &g.save, g.sprites)
 }
 
 // --- Playing ---
+
+func (g *Game) dailyName() string {
+	if g.dailyMode {
+		return g.dailyChallenge.Name
+	}
+	return ""
+}
+
+func driftDurationMult(ticks int) int {
+	switch {
+	case ticks >= DriftDurationTier3:
+		return 3
+	case ticks >= DriftDurationTier2:
+		return 2
+	default:
+		return 1
+	}
+}
 
 func (g *Game) updatePlaying() {
 	if IsEscPressed() {
@@ -266,8 +320,36 @@ func (g *Game) updatePlaying() {
 	}
 
 	g.tickCount++
-	g.score++
+	if !(g.dailyMode && g.dailyChallenge.ID == ChallengeSerpentine) {
+		g.score++
+	}
 	g.zone.Update()
+
+	// Zone transition announcements.
+	if g.zone.JustTransitioned {
+		zoneName := g.zone.ZoneName()
+		if g.zone.ZonesReached > g.save.BestZone {
+			g.score += 500
+			g.scoreState.FloatingTexts = append(g.scoreState.FloatingTexts,
+				FloatingText{
+					X: ScreenWidth/2 - 70, Y: ScreenHeight/2 - 60,
+					Text: "NEW ZONE: " + zoneName,
+					TTL: 120, MaxTTL: 120,
+					Color: color.RGBA{0xFF, 0xFF, 0xFF, 0xFF},
+					VY: -0.3, ScaleStart: 3.5, ScaleEnd: 2.0,
+					ScaleTicks: 15,
+				})
+		} else {
+			g.scoreState.FloatingTexts = append(g.scoreState.FloatingTexts,
+				FloatingText{
+					X: ScreenWidth/2 - 40, Y: ScreenHeight/2 - 50,
+					Text: zoneName, TTL: 60, MaxTTL: 60,
+					Color: color.RGBA{0xCC, 0xCC, 0xCC, 0xFF},
+					VY: -0.5, ScaleStart: 2.0, ScaleEnd: 1.5,
+					ScaleTicks: 10,
+				})
+		}
+	}
 
 	// Last Chance timer.
 	if g.lastChanceActive {
@@ -291,6 +373,17 @@ func (g *Game) updatePlaying() {
 
 	// Player speed control: gas / brake / coast.
 	vertical := GetVerticalInput()
+	// Daily modifiers on vertical input.
+	if g.dailyMode {
+		switch g.dailyChallenge.ID {
+		case ChallengeNoBrakes:
+			if vertical > 0 {
+				vertical = 0
+			}
+		case ChallengeHeavyFoot:
+			vertical = -1
+		}
+	}
 	switch {
 	case vertical < 0: // gas
 		g.speed += g.activeCar.Acceleration
@@ -304,6 +397,9 @@ func (g *Game) updatePlaying() {
 	}
 	if g.speed > g.activeCar.MaxSpeed {
 		g.speed = g.activeCar.MaxSpeed
+	}
+	if g.speed > g.topSpeed {
+		g.topSpeed = g.speed
 	}
 
 	g.accelerating = vertical < 0
@@ -328,11 +424,15 @@ func (g *Game) updatePlaying() {
 	}
 	playerOff := g.offsetFn(PlayerStartY)
 	g.decor.Update(effectiveSpeed, g.zone.CurrentZone, g.zone.ActivePalette)
-	g.player.Update(playerOff)
+	mirror := g.dailyMode && g.dailyChallenge.ID == ChallengeMirror
+	g.player.Update(playerOff, mirror)
 
 	// Drift: Shift + direction at speed > 5.
 	if !g.lastChanceActive {
 		hInput := GetHorizontalInput()
+		if mirror {
+			hInput = -hInput
+		}
 		if g.player.Drift.Update(&g.player, hInput, IsDriftPressed(), g.speed) {
 			g.speed *= DriftSpeedDrag
 		}
@@ -344,8 +444,23 @@ func (g *Game) updatePlaying() {
 
 	// Drift scoring and effects.
 	if g.player.Drift.Active {
-		// Points per tick.
-		g.score += DriftScorePerTick * g.scoreState.ComboMultiplier
+		driftMult := driftDurationMult(g.player.Drift.DriftTicks)
+		// DANGER DRIFT: shoulder drift = ×5 multiplier.
+		if g.player.IsOnShoulder(playerOff) {
+			driftMult = DriftDangerMult
+			if g.tickCount%30 == 0 {
+				g.scoreState.FloatingTexts = append(g.scoreState.FloatingTexts,
+					FloatingText{
+						X: g.player.X - 25, Y: g.player.Y - 45,
+						Text: "DANGER!", TTL: 30, MaxTTL: 30,
+						Color: color.RGBA{0xFF, 0x00, 0x00, 0xFF},
+						VY: -1.8, ScaleStart: 3.0, ScaleEnd: 1.8,
+						ScaleTicks: 8,
+					})
+			}
+		}
+
+		g.score += DriftScorePerTick * driftMult * g.scoreState.ComboMultiplier
 		g.scoreState.ComboTimer = ComboDecayTicks
 
 		// Smoke from wheels every 3 ticks.
@@ -355,27 +470,32 @@ func (g *Game) updatePlaying() {
 				g.player.Drift.Direction)
 		}
 
-		// PERFECT DRIFT: 1 second of sustained drift in curve direction.
-		if g.player.Drift.DriftTicks == 60 && g.road.Curve != nil {
-			curveDir := g.road.Curve.CurveDirection()
-			if curveDir != 0 && curveDir*g.player.Drift.Direction > 0 {
-				bonus := DriftPerfectBonus * g.scoreState.ComboMultiplier
-				g.score += bonus
-				g.scoreState.FloatingTexts = append(g.scoreState.FloatingTexts,
-					FloatingText{
-						X: g.player.X - 60, Y: g.player.Y - 40,
-						Text: fmt.Sprintf("PERFECT DRIFT +%d", bonus),
-						TTL: 60, MaxTTL: 60,
-						Color: color.RGBA{0xFF, 0x00, 0xFF, 0xFF},
-						VY: -1.5, ScaleStart: 3.0, ScaleEnd: 1.5,
-						ScaleTicks: 12,
-					})
-			}
+		// Duration tier announcements.
+		if g.player.Drift.DriftTicks == DriftDurationTier2 {
+			g.scoreState.FloatingTexts = append(g.scoreState.FloatingTexts,
+				FloatingText{
+					X: g.player.X - 30, Y: g.player.Y - 35,
+					Text: "DRIFT x2", TTL: 50, MaxTTL: 50,
+					Color: color.RGBA{0xFF, 0x00, 0xFF, 0xFF},
+					VY: -1.2, ScaleStart: 2.5, ScaleEnd: 1.5,
+					ScaleTicks: 10,
+				})
+		}
+		if g.player.Drift.DriftTicks == DriftDurationTier3 {
+			g.scoreState.FloatingTexts = append(g.scoreState.FloatingTexts,
+				FloatingText{
+					X: g.player.X - 30, Y: g.player.Y - 35,
+					Text: "DRIFT x3", TTL: 50, MaxTTL: 50,
+					Color: color.RGBA{0xFF, 0x00, 0xFF, 0xFF},
+					VY: -1.2, ScaleStart: 3.0, ScaleEnd: 1.8,
+					ScaleTicks: 10,
+				})
 		}
 	}
 
 	// Shoulder: penalty when driving off the road surface.
 	if g.player.IsOnShoulder(playerOff) {
+		g.milestones.CleanTimer = 0
 		g.speed *= 0.95
 		if g.tickCount%4 == 0 {
 			g.particles.EmitSparks(g.player.X, g.player.Y+g.player.Height/2, 2)
@@ -399,12 +519,14 @@ func (g *Game) updatePlaying() {
 			g.shake = ShakeCollision()
 			g.particles.EmitCollisionBurst(g.player.X, g.player.Y, g.activeCar.Color)
 			g.audio.PlayCrash()
+			g.milestones.CleanTimer = 0
 			g.scoreState.ComboMultiplier = 1
 			g.scoreState.ComboTimer = 0
 		} else if !g.ghostShieldActive {
 			g.particles.EmitCollisionBurst(g.player.X, g.player.Y, g.activeCar.Color)
 			g.shake = ShakeCollision()
 			g.freezeTimer = FreezeFrameCollision
+			g.milestones.CleanTimer = 0
 			g.scoreState.ComboMultiplier = 1
 			g.scoreState.ComboTimer = 0
 			g.enterGameOver()
@@ -567,6 +689,14 @@ func (g *Game) updatePlaying() {
 		if res.Bonus > 0 {
 			if g.player.Drift.Active {
 				res.Bonus = int(float64(res.Bonus) * DriftNearMissMult)
+				g.scoreState.FloatingTexts = append(g.scoreState.FloatingTexts,
+					FloatingText{
+						X: res.X - 20, Y: res.Y - 25,
+						Text: "STYLE!", TTL: 45, MaxTTL: 45,
+						Color: color.RGBA{0x00, 0xFF, 0xFF, 0xFF},
+						VY: -2.0, ScaleStart: 3.0, ScaleEnd: 1.5,
+						ScaleTicks: 10,
+					})
 			}
 			g.score += res.Bonus
 			g.nearMissCount++
@@ -581,10 +711,39 @@ func (g *Game) updatePlaying() {
 	}
 	UpdateScoreState(&g.scoreState)
 
+	// Milestone checks.
+	g.milestones.CleanTimer++
+	if achieved, id := g.milestones.Check(
+		g.topSpeed, g.activeCar.MaxSpeed,
+		g.scoreState.ComboMultiplier,
+		g.zone.ZonesReached, g.tickCount,
+	); achieved {
+		switch id {
+		case MilestoneSpeedDemon:
+			g.nitroCharges++
+		case MilestoneUntouchable:
+			g.milestones.ScoreMultTimer = 10 * TPS
+		case MilestoneComboKing:
+			g.score += milestoneDefs[id].Bonus
+		case MilestoneMarathoner:
+			g.fuel = FuelMax
+		case MilestoneZoneSurfer:
+			g.milestones.ZoneSurferX2 = true
+		}
+		g.audio.PlayArpeggio()
+	}
+	g.milestones.Update()
+
+	// Apply milestone score multiplier.
+	if mult := g.milestones.ScoreMultiplier(); mult > 1 {
+		g.score += (mult - 1) // extra +1 per tick for each active x2
+	}
+
 	// Exhaust particles when accelerating.
 	if g.accelerating && g.tickCount%3 == 0 {
+		trailClr := TrailColor(g.save.SelectedTrail, g.tickCount)
 		g.particles.EmitExhaust(g.player.X, g.player.Y+g.player.Height/2,
-			g.speed/g.activeCar.MaxSpeed)
+			g.speed/g.activeCar.MaxSpeed, trailClr)
 	}
 
 	// Brake trail particles.
@@ -622,12 +781,14 @@ func (g *Game) updatePlaying() {
 			g.shake = ShakeCollision()
 			g.particles.EmitCollisionBurst(cr.HitX, cr.HitY, g.activeCar.Color)
 			g.audio.PlayCrash()
+			g.milestones.CleanTimer = 0
 			g.scoreState.ComboMultiplier = 1
 			g.scoreState.ComboTimer = 0
 		} else {
 			g.particles.EmitCollisionBurst(cr.HitX, cr.HitY, g.activeCar.Color)
 			g.shake = ShakeCollision()
 			g.freezeTimer = FreezeFrameCollision
+			g.milestones.CleanTimer = 0
 			g.scoreState.ComboMultiplier = 1
 			g.scoreState.ComboTimer = 0
 			g.busted = cr.CarType == CarTypePolice
@@ -669,6 +830,7 @@ func (g *Game) drawPlaying(dst *ebiten.Image) {
 
 	DrawHUD(dst, HUDData{
 		Score:           g.score,
+		HighScore:       g.save.HighScore,
 		ScrollSpeed:     g.speed,
 		Fuel:            g.fuel,
 		NitroCharges:    g.nitroCharges,
@@ -680,11 +842,43 @@ func (g *Game) drawPlaying(dst *ebiten.Image) {
 		TickCount:       g.tickCount,
 		Accelerating:    g.accelerating,
 		Braking:         g.braking,
-		DriftActive:         g.player.Drift.Active,
-		DriftHeat:           g.player.Drift.HeatLevel,
-		DriftOverheat:       g.player.Drift.Overheated,
+		DriftActive:     g.player.Drift.Active,
+		DriftHeat:       g.player.Drift.HeatLevel,
+		DriftOverheat:   g.player.Drift.Overheated,
+		NeonAccent:      g.zone.ActivePalette.NeonAccent,
+		DailyName:       g.dailyName(),
 	})
 	DrawFloatingTexts(dst, g.scoreState.FloatingTexts)
+
+	// Milestone gold bar.
+	if g.milestones.ShowTimer > 0 {
+		t := g.milestones.ShowTimer
+		maxW := float64(ScreenWidth) * 0.6
+		var barW float64
+		switch {
+		case t > 128: // ease-in (first 8 ticks)
+			progress := float64(136-t) / 8.0
+			barW = maxW * progress * progress
+		case t < 8: // ease-out (last 8 ticks)
+			progress := float64(t) / 8.0
+			barW = maxW * progress * progress
+		default:
+			barW = maxW
+		}
+		barX := (float64(ScreenWidth) - barW) / 2
+		barY := 48.0
+		alpha := uint8(220)
+		if t < 8 {
+			alpha = uint8(220 * t / 8)
+		}
+		DrawRect(dst, barX, barY, barW, 16,
+			color.RGBA{0xFF, 0xD7, 0x00, alpha})
+		if barW > 60 {
+			DebugPrintScaled(dst, g.milestones.ShowName,
+				int(float64(ScreenWidth)/2)-len(g.milestones.ShowName)*3,
+				int(barY)+2)
+		}
+	}
 }
 
 // --- Draw dispatcher ---
@@ -716,19 +910,35 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawPaused(dst)
 	case StateGameOver:
 		g.drawPlaying(dst)
+		nextName, nextThreshold := g.save.NextUnlock()
+		var nextPct float64
+		if nextThreshold > 0 {
+			nextPct = float64(g.save.TotalScore) / float64(nextThreshold)
+			if nextPct > 1 {
+				nextPct = 1
+			}
+		}
 		DrawGameOver(dst, GameOverData{
 			Score:          g.score,
 			HighScore:      g.save.HighScore,
 			IsNewHighScore: g.isNewHighScore,
 			NearMisses:     g.nearMissCount,
+			BestNearMisses: g.save.BestNearMisses,
 			BestCombo:      g.peakCombo,
+			SaveBestCombo:  g.save.BestCombo,
+			TopSpeed:       g.topSpeed,
+			BestTopSpeed:   g.save.BestTopSpeed,
 			Distance:       float64(g.tickCount) / float64(TPS) * 0.05,
 			ZoneName:       g.zone.ZoneName(),
+			ZonesReached:   g.zone.ZonesReached,
+			BestZone:       g.save.BestZone,
 			Selection:      g.gameOverSelection,
 			NewUnlocks:     g.newUnlocks,
 			TotalScore:     g.save.TotalScore,
 			Busted:         g.busted,
 			FuelEmpty:      g.fuelEmpty,
+			NextUnlockName: nextName,
+			NextUnlockPct:  nextPct,
 		})
 	case StateGarage:
 		g.drawGarage(dst)
@@ -781,6 +991,7 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 func (g *Game) enterGameOver() {
 	g.state = StateGameOver
 	g.gameOverSelection = 0
+	g.scoreState.FloatingTexts = g.scoreState.FloatingTexts[:0]
 	if g.fuelEmpty {
 		// Fuel empty — engine sputter, not a crash.
 		g.audio.StopEngine()
@@ -801,7 +1012,22 @@ func (g *Game) enterGameOver() {
 	if g.nearMissCount > g.save.BestNearMisses {
 		g.save.BestNearMisses = g.nearMissCount
 	}
+	if g.topSpeed > g.save.BestTopSpeed {
+		g.save.BestTopSpeed = g.topSpeed
+	}
+	if g.zone.ZonesReached > g.save.BestZone {
+		g.save.BestZone = g.zone.ZonesReached
+	}
+	// Daily challenge reward.
+	if g.dailyMode && g.save.DailyDone != TodayDateStr() {
+		g.save.DailyDone = TodayDateStr()
+		g.save.DailyStars++
+		g.save.TotalScore += 5000
+	}
+	g.dailyMode = false
+
 	g.newUnlocks = g.save.CheckUnlocks()
+	g.newUnlocks = append(g.newUnlocks, g.save.CheckTrailUnlocks()...)
 	g.save.Save()
 }
 
@@ -849,6 +1075,7 @@ func (g *Game) reset() {
 	g.pauseSelection = 0
 	g.peakCombo = 0
 	g.nearMissCount = 0
+	g.topSpeed = 0
 	g.busted = false
 	g.fuelEmpty = false
 	g.lastChanceAvailable = true
@@ -860,6 +1087,17 @@ func (g *Game) reset() {
 	g.coinSpawnTimer = randRange(8*TPS, 15*TPS)
 	g.coinLineCount = 0
 	g.coinLineCollected = 0
+
+	// Daily challenge modifiers.
+	if g.dailyMode {
+		switch g.dailyChallenge.ID {
+		case ChallengeHeavyFoot:
+			g.speed = 6.0
+		case ChallengeFuelCrisis:
+			g.fuel = FuelMax * 0.4
+			g.fuelConsumption *= 1.5
+		}
+	}
 }
 
 func randRange(minVal, maxVal int) int {
