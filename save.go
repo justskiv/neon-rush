@@ -29,6 +29,10 @@ type SaveData struct {
 	SelectedTrail  int     `json:"selected_trail"`
 	DailyDone      string  `json:"daily_done"`
 	DailyStars     int     `json:"daily_stars"`
+	SoundOff       bool         `json:"sound_off"`
+	ShakeOff       bool         `json:"shake_off"`
+	GhostOff       bool         `json:"ghost_off"`
+	GhostData      []GhostFrame `json:"ghost_data,omitempty"`
 }
 
 func savePath() string {

@@ -222,6 +222,6 @@ func DrawFloatingTexts(screen *ebiten.Image, texts []FloatingText) {
 		tw := float64(len(ft.Text)*6+4) * scale
 		DrawRect(screen, ft.X-1, ft.Y-1, tw, 16*scale, color.RGBA{0, 0, 0, a / 2})
 		DrawRect(screen, ft.X-1, ft.Y-1, 2, 16*scale, clr)
-		DebugPrintScaledSize(screen, ft.Text, int(ft.X+3), int(ft.Y), scale)
+		DrawTextScaled(screen, ft.Text, int(ft.X+3), int(ft.Y), scale, clr)
 	}
 }

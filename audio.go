@@ -22,8 +22,12 @@ type AudioSystem struct {
 	sfxNitro      []byte
 	sfxCombo      []byte
 	sfxRepair     []byte
-	sfxScrape     []byte
-	sfxArpeggio   []byte
+	sfxScrape      []byte
+	sfxArpeggio    []byte
+	sfxTurnWarn    []byte
+	sfxCrashEcho   []byte
+
+	Muted bool
 }
 
 // NewAudioSystem creates the audio context and generates all sound effects.
@@ -55,13 +59,17 @@ func NewAudioSystem() *AudioSystem {
 		sfxNitro:  generateNitroSFX(),
 		sfxCombo:  generateCombo(),
 		sfxRepair: generateRepair(),
-		sfxScrape:   generateScrape(),
-		sfxArpeggio: generateArpeggio(),
+		sfxScrape:    generateScrape(),
+		sfxArpeggio:  generateArpeggio(),
+		sfxTurnWarn:  generateTurnWarning(),
+		sfxCrashEcho: generateCrashEcho(),
 	}
 }
 
 func (a *AudioSystem) StartEngine() {
-	a.enginePlayer.Play()
+	if !a.Muted {
+		a.enginePlayer.Play()
+	}
 }
 
 func (a *AudioSystem) StopEngine() {
@@ -82,13 +90,18 @@ func (a *AudioSystem) PlayWoosh(tier NearMissTier) {
 }
 func (a *AudioSystem) PlayCrash()  { a.playSFX(a.sfxCrash, 0.35) }
 func (a *AudioSystem) PlayRepair() { a.playSFX(a.sfxRepair, 0.30) }
-func (a *AudioSystem) PlayScrape()   { a.playSFX(a.sfxScrape, 0.15) }
-func (a *AudioSystem) PlayArpeggio() { a.playSFX(a.sfxArpeggio, 0.25) }
+func (a *AudioSystem) PlayScrape()    { a.playSFX(a.sfxScrape, 0.15) }
+func (a *AudioSystem) PlayArpeggio()  { a.playSFX(a.sfxArpeggio, 0.25) }
+func (a *AudioSystem) PlayTurnWarn()  { a.playSFX(a.sfxTurnWarn, 0.15) }
+func (a *AudioSystem) PlayCrashEcho() { a.playSFX(a.sfxCrashEcho, 0.35) }
 func (a *AudioSystem) PlayPickup() { a.playSFX(a.sfxPickup, 0.30) }
 func (a *AudioSystem) PlayNitro()  { a.playSFX(a.sfxNitro, 0.25) }
 func (a *AudioSystem) PlayCombo()  { a.playSFX(a.sfxCombo, 0.20) }
 
 func (a *AudioSystem) playSFX(buf []byte, volume float64) {
+	if a.Muted {
+		return
+	}
 	p := a.context.NewPlayerFromBytes(buf)
 	p.SetVolume(volume)
 	p.Play()
@@ -327,6 +340,56 @@ func generateArpeggio() []byte {
 		env := 1.0 - localT/noteDur
 		freq := notes[noteIdx]
 		sample := math.Sin(2*math.Pi*freq*t) * env * 0.35
+		writeSample16(buf, i, sample)
+	}
+	return buf
+}
+
+// generateTurnWarning creates a short beep for curve entry.
+func generateTurnWarning() []byte {
+	dur := 0.1
+	freq := 450.0
+	n := int(dur * sampleRate)
+	buf := make([]byte, n*4)
+	for i := range n {
+		t := float64(i) / float64(sampleRate)
+		progress := float64(i) / float64(n)
+		env := 1.0 - progress
+		sample := math.Sin(2*math.Pi*freq*t) * env * 0.3
+		writeSample16(buf, i, sample)
+	}
+	return buf
+}
+
+// generateCrashEcho creates crash with echo tail.
+func generateCrashEcho() []byte {
+	dur := 0.8
+	n := int(dur * sampleRate)
+	buf := make([]byte, n*4)
+	echoDelay1 := int(0.15 * sampleRate)
+	echoDelay2 := int(0.35 * sampleRate)
+	for i := range n {
+		t := float64(i) / float64(sampleRate)
+		progress := float64(i) / float64(n)
+		// Main crash: low thud + noise.
+		env := math.Exp(-progress * 6)
+		thud := math.Sin(2*math.Pi*60*t) * env * 0.4
+		noise := (rand.Float64()*2 - 1) * env * 0.3
+		sample := thud + noise
+		// Echo 1.
+		if i >= echoDelay1 {
+			e1prog := float64(i-echoDelay1) / float64(n-echoDelay1)
+			e1env := math.Exp(-e1prog*8) * 0.4
+			e1t := float64(i-echoDelay1) / float64(sampleRate)
+			sample += math.Sin(2*math.Pi*55*e1t) * e1env * 0.3
+		}
+		// Echo 2.
+		if i >= echoDelay2 {
+			e2prog := float64(i-echoDelay2) / float64(n-echoDelay2)
+			e2env := math.Exp(-e2prog*10) * 0.15
+			e2t := float64(i-echoDelay2) / float64(sampleRate)
+			sample += math.Sin(2*math.Pi*50*e2t) * e2env * 0.2
+		}
 		writeSample16(buf, i, sample)
 	}
 	return buf

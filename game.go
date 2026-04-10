@@ -16,6 +16,7 @@ const (
 	StatePaused
 	StateGameOver
 	StateGarage
+	StateSettings
 )
 
 // Game implements ebiten.Game interface.
@@ -89,6 +90,12 @@ type Game struct {
 	dailyMode           bool
 	dailyChallenge      DailyChallenge
 	milestones          MilestoneSystem
+	displaySpeed        float64
+	scoreFlashTimer     int
+	prevScore           int
+	transition          Transition
+	settingsSelection   int
+	ghostRecording      GhostRecording
 }
 
 // NewGame creates and initializes a new game instance.
@@ -114,11 +121,16 @@ func NewGame() *Game {
 		renderScale:     1.0,
 		save:            LoadSave(),
 	}
+	g.audio.Muted = g.save.SoundOff
 	InitVignette()
 	return g
 }
 
 func (g *Game) Update() error {
+	if g.transition.Active() {
+		g.transition.Update()
+		return nil
+	}
 	if g.freezeTimer > 0 {
 		g.freezeTimer--
 		return nil
@@ -134,6 +146,8 @@ func (g *Game) Update() error {
 		g.updateGameOver()
 	case StateGarage:
 		g.updateGarage()
+	case StateSettings:
+		g.updateSettings()
 	}
 	return nil
 }
@@ -146,28 +160,34 @@ func (g *Game) updateMenu() {
 	if IsUpMenuPressed() {
 		g.menu.Selection--
 		if g.menu.Selection < 0 {
-			g.menu.Selection = 2
+			g.menu.Selection = 3
 		}
 	}
 	if IsDownMenuPressed() {
 		g.menu.Selection++
-		if g.menu.Selection > 2 {
+		if g.menu.Selection > 3 {
 			g.menu.Selection = 0
 		}
 	}
 	if IsRestartPressed() {
 		switch g.menu.Selection {
 		case 0: // PLAY
-			g.dailyMode = false
-			g.reset()
+			g.transition.Start(17, func() {
+				g.dailyMode = false
+				g.reset()
+			})
 		case 1: // DAILY
 			if g.save.DailyDone != TodayDateStr() {
-				g.dailyMode = true
-				g.dailyChallenge = TodayChallenge()
-				g.reset()
+				g.transition.Start(17, func() {
+					g.dailyMode = true
+					g.dailyChallenge = TodayChallenge()
+					g.reset()
+				})
 			}
 		case 2: // GARAGE
 			g.state = StateGarage
+		case 3: // SETTINGS
+			g.state = StateSettings
 		}
 	}
 }
@@ -211,7 +231,7 @@ func (g *Game) drawPaused(dst *ebiten.Image) {
 
 	cx := ScreenWidth/2 - 40
 	cy := ScreenHeight/2 - 40
-	DebugPrintScaled(dst, "P A U S E D", cx, cy)
+	DrawText(dst, "P A U S E D", cx, cy)
 
 	items := []string{"RESUME", "RESTART", "QUIT"}
 	for i, item := range items {
@@ -219,7 +239,7 @@ func (g *Game) drawPaused(dst *ebiten.Image) {
 		if i == g.pauseSelection {
 			marker = "> "
 		}
-		DebugPrintScaled(dst, marker+item, cx, cy+30+i*18)
+		DrawText(dst, marker+item, cx, cy+30+i*18)
 	}
 }
 
@@ -233,9 +253,9 @@ func (g *Game) updateGameOver() {
 	}
 	if IsRestartPressed() {
 		if g.gameOverSelection == 0 {
-			g.reset()
+			g.transition.Start(25, func() { g.reset() })
 		} else {
-			g.state = StateMenu
+			g.transition.Start(17, func() { g.state = StateMenu })
 		}
 	}
 }
@@ -290,6 +310,70 @@ func (g *Game) updateGarage() {
 
 func (g *Game) drawGarage(dst *ebiten.Image) {
 	DrawGarage(dst, g.garageSelection, g.garageSection, g.trailSelection, &g.save, g.sprites)
+}
+
+// --- Settings ---
+
+func (g *Game) updateSettings() {
+	if IsUpMenuPressed() {
+		g.settingsSelection--
+		if g.settingsSelection < 0 {
+			g.settingsSelection = 2
+		}
+	}
+	if IsDownMenuPressed() {
+		g.settingsSelection++
+		if g.settingsSelection > 2 {
+			g.settingsSelection = 0
+		}
+	}
+	if IsLeftMenuPressed() || IsRightMenuPressed() || IsRestartPressed() {
+		switch g.settingsSelection {
+		case 0:
+			g.save.SoundOff = !g.save.SoundOff
+			g.audio.Muted = g.save.SoundOff
+		case 1:
+			g.save.ShakeOff = !g.save.ShakeOff
+		case 2:
+			g.save.GhostOff = !g.save.GhostOff
+		}
+		g.save.Save()
+	}
+	if IsEscPressed() {
+		g.state = StateMenu
+	}
+}
+
+func (g *Game) drawSettings(dst *ebiten.Image) {
+	dst.Fill(color.RGBA{0x0D, 0x0D, 0x1A, 0xFF})
+	DrawText(dst, "S E T T I N G S", ScreenWidth/2-52, 60)
+
+	type settingItem struct {
+		label string
+		on    bool
+	}
+	items := []settingItem{
+		{"Sound", !g.save.SoundOff},
+		{"Screen Shake", !g.save.ShakeOff},
+		{"Ghost Car", !g.save.GhostOff},
+	}
+	for i, it := range items {
+		y := 140 + i*30
+		clr := colorUnselected
+		prefix := "  "
+		if i == g.settingsSelection {
+			clr = colorSelected
+			prefix = "> "
+		}
+		val := "OFF"
+		if it.on {
+			val = "ON"
+		}
+		DrawTextColor(dst, prefix+it.label, 100, y, clr)
+		DrawTextColor(dst, val, 280, y, clr)
+	}
+	DrawTextColor(dst, "Left/Right toggle   Esc back", 60, ScreenHeight-30,
+		color.RGBA{0x66, 0x66, 0x66, 0xFF})
 }
 
 // --- Playing ---
@@ -413,6 +497,10 @@ func (g *Game) updatePlaying() {
 	}
 
 	g.road.Update(effectiveSpeed, g.tickCount)
+	// Turn warning sound.
+	if g.road.Curve != nil && g.road.Curve.JustEntered {
+		g.audio.PlayTurnWarn()
+	}
 	if g.road.Curve != nil {
 		speed := effectiveSpeed
 		curve := g.road.Curve
@@ -751,6 +839,9 @@ func (g *Game) updatePlaying() {
 		g.particles.EmitBrakeTrails(g.player.X, g.player.Y+g.player.Height/2)
 	}
 
+	// Ghost recording.
+	g.ghostRecording.Record(g.player.X, g.tickCount)
+
 	// Damage sparks: occasional sparks from rear of damaged car.
 	if g.player.Damaged && g.tickCount%8 == 0 {
 		g.particles.EmitSparks(
@@ -809,6 +900,15 @@ func (g *Game) drawPlaying(dst *ebiten.Image) {
 		car.Draw(dst, g.sprites, g.offsetFn)
 	}
 
+	// Ghost car from best run.
+	if !g.save.GhostOff && len(g.save.GhostData) > 0 {
+		idx := g.tickCount / ghostSampleInterval
+		if idx >= 0 && idx < len(g.save.GhostData) {
+			gx := g.save.GhostData[idx].X
+			drawSpriteAlpha(dst, g.sprites.PlayerCars[0], gx, PlayerStartY, 0.15)
+		}
+	}
+
 	g.player.Draw(dst, g.sprites, g.tickCount, g.braking)
 	g.particles.Draw(dst)
 	g.speedLines.Draw(dst)
@@ -823,15 +923,26 @@ func (g *Game) drawPlaying(dst *ebiten.Image) {
 	if g.lastChanceActive {
 		DrawRect(dst, 0, 0, ScreenWidth, ScreenHeight, color.RGBA{0xFF, 0x00, 0x00, 40})
 		if (g.lastChanceTimer/8)%2 == 0 {
-			DebugPrintScaled(dst, "HULL DAMAGED", ScreenWidth/2-40, ScreenHeight/2-35)
-			DebugPrintScaled(dst, "Next hit is fatal", ScreenWidth/2-55, ScreenHeight/2-15)
+			DrawText(dst, "HULL DAMAGED", ScreenWidth/2-40, ScreenHeight/2-35)
+			DrawText(dst, "Next hit is fatal", ScreenWidth/2-55, ScreenHeight/2-15)
 		}
+	}
+
+	// Update display speed (smooth lerp).
+	g.displaySpeed += (g.speed - g.displaySpeed) * 0.1
+	// Score flash.
+	if g.score != g.prevScore {
+		g.scoreFlashTimer = 6
+		g.prevScore = g.score
+	}
+	if g.scoreFlashTimer > 0 {
+		g.scoreFlashTimer--
 	}
 
 	DrawHUD(dst, HUDData{
 		Score:           g.score,
 		HighScore:       g.save.HighScore,
-		ScrollSpeed:     g.speed,
+		DisplaySpeed:    g.displaySpeed,
 		Fuel:            g.fuel,
 		NitroCharges:    g.nitroCharges,
 		NitroActive:     g.nitroActive,
@@ -840,8 +951,7 @@ func (g *Game) drawPlaying(dst *ebiten.Image) {
 		Damaged:         g.player.Damaged,
 		RepairFlash:     g.player.RepairGlowTimer,
 		TickCount:       g.tickCount,
-		Accelerating:    g.accelerating,
-		Braking:         g.braking,
+		ScoreFlash:      g.scoreFlashTimer,
 		DriftActive:     g.player.Drift.Active,
 		DriftHeat:       g.player.Drift.HeatLevel,
 		DriftOverheat:   g.player.Drift.Overheated,
@@ -874,7 +984,7 @@ func (g *Game) drawPlaying(dst *ebiten.Image) {
 		DrawRect(dst, barX, barY, barW, 16,
 			color.RGBA{0xFF, 0xD7, 0x00, alpha})
 		if barW > 60 {
-			DebugPrintScaled(dst, g.milestones.ShowName,
+			DrawText(dst, g.milestones.ShowName,
 				int(float64(ScreenWidth)/2)-len(g.milestones.ShowName)*3,
 				int(barY)+2)
 		}
@@ -942,9 +1052,16 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		})
 	case StateGarage:
 		g.drawGarage(dst)
+	case StateSettings:
+		g.drawSettings(dst)
 	}
 
-	ox, oy := g.shake.Update()
+	var ox, oy float64
+	if !g.save.ShakeOff {
+		ox, oy = g.shake.Update()
+	} else {
+		g.shake = ScreenShake{} // suppress
+	}
 	g.chromatic.Update()
 	caOffset := g.chromatic.Offset() * rs
 
@@ -973,6 +1090,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		opB.Blend = ebiten.BlendLighter
 		screen.DrawImage(g.offscreen, opB)
 	}
+
+	// Fade transition overlay (drawn directly on screen, after post-processing).
+	g.transition.Draw(screen)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -996,15 +1116,17 @@ func (g *Game) enterGameOver() {
 		// Fuel empty — engine sputter, not a crash.
 		g.audio.StopEngine()
 	} else {
-		g.audio.PlayCrash()
+		g.audio.PlayCrashEcho()
 		g.audio.StopEngine()
 	}
 
 	g.isNewHighScore = g.score > g.save.HighScore
 	g.save.GamesPlayed++
 	g.save.TotalScore += g.score
-	if g.isNewHighScore {
-		g.save.HighScore = g.score
+	// Always save ghost recording; overwrite only on new record.
+	if g.isNewHighScore || len(g.save.GhostData) == 0 {
+		g.save.HighScore = max(g.score, g.save.HighScore)
+		g.save.GhostData = g.ghostRecording.Frames
 	}
 	if g.peakCombo > g.save.BestCombo {
 		g.save.BestCombo = g.peakCombo
@@ -1087,6 +1209,7 @@ func (g *Game) reset() {
 	g.coinSpawnTimer = randRange(8*TPS, 15*TPS)
 	g.coinLineCount = 0
 	g.coinLineCollected = 0
+	g.ghostRecording = GhostRecording{}
 
 	// Daily challenge modifiers.
 	if g.dailyMode {

@@ -49,7 +49,7 @@ var specialNames = map[CarSpecial]string{
 func DrawGarage(screen *ebiten.Image, selectedIdx, section, trailIdx int, save *SaveData, sprites *SpriteCache) {
 	screen.Fill(color.RGBA{0x0D, 0x0D, 0x1A, 0xFF})
 
-	DebugPrintScaled(screen, "G A R A G E", ScreenWidth/2-35, 30)
+	DrawText(screen, "G A R A G E", ScreenWidth/2-35, 30)
 
 	car := PlayerCars[selectedIdx]
 	unlocked := save.IsCarUnlocked(selectedIdx)
@@ -75,12 +75,12 @@ func DrawGarage(screen *ebiten.Image, selectedIdx, section, trailIdx int, save *
 	}
 
 	// Arrows.
-	DebugPrintScaled(screen, "<", int(previewCX)-50, int(previewCY))
-	DebugPrintScaled(screen, ">", int(previewCX)+40, int(previewCY))
+	DrawText(screen, "<", int(previewCX)-50, int(previewCY))
+	DrawText(screen, ">", int(previewCX)+40, int(previewCY))
 
 	// Car name.
 	nameY := int(previewCY) + PlayerSpriteH + 10
-	DebugPrintScaled(screen, fmt.Sprintf("\"%s\"", car.Name), ScreenWidth/2-30, nameY)
+	DrawText(screen, fmt.Sprintf("\"%s\"", car.Name), ScreenWidth/2-30, nameY)
 
 	// Stats.
 	statsY := nameY + 25
@@ -89,7 +89,7 @@ func DrawGarage(screen *ebiten.Image, selectedIdx, section, trailIdx int, save *
 	drawStatBar(screen, "BRK", car.BrakeForce, 0.12, 100, statsY+32)
 	drawStatBar(screen, "HND", car.Handling, 1.2, 100, statsY+48)
 	drawStatBar(screen, "NOS", float64(car.MaxNitro)/3.0, 1.0, 100, statsY+64)
-	DebugPrintScaled(screen, fmt.Sprintf("SPC: %s", specialNames[car.Special]), 100, statsY+80)
+	DrawText(screen, fmt.Sprintf("SPC: %s", specialNames[car.Special]), 100, statsY+80)
 
 	// Car unlock/select status.
 	statusY := statsY + 100
@@ -100,12 +100,12 @@ func DrawGarage(screen *ebiten.Image, selectedIdx, section, trailIdx int, save *
 	DrawRect(screen, 58, float64(statusY)-4, 284, 18, carSectionClr)
 	if unlocked {
 		if save.SelectedCar == selectedIdx {
-			DebugPrintScaled(screen, "[SELECTED]", ScreenWidth/2-32, statusY)
+			DrawText(screen, "[SELECTED]", ScreenWidth/2-32, statusY)
 		} else {
-			DebugPrintScaled(screen, "[ENTER to SELECT]", ScreenWidth/2-52, statusY)
+			DrawText(screen, "[ENTER to SELECT]", ScreenWidth/2-52, statusY)
 		}
 	} else {
-		DebugPrintScaled(screen,
+		DrawText(screen,
 			fmt.Sprintf("LOCKED - %d pts", car.UnlockScore), 80, statusY)
 	}
 
@@ -116,7 +116,7 @@ func DrawGarage(screen *ebiten.Image, selectedIdx, section, trailIdx int, save *
 		trailSectionClr = color.RGBA{0x44, 0x44, 0x66, 0xFF}
 	}
 	DrawRect(screen, 58, float64(trailY)-4, 284, 34, trailSectionClr)
-	DebugPrintScaled(screen, "TRAIL:", 65, trailY)
+	DrawText(screen, "TRAIL:", 65, trailY)
 
 	// Trail color swatches.
 	swatchX := 120
@@ -144,18 +144,18 @@ func DrawGarage(screen *ebiten.Image, selectedIdx, section, trailIdx int, save *
 	if !save.IsTrailUnlocked(trailIdx) {
 		trailStatus = fmt.Sprintf("%s - %d pts", trailDef.Name, trailDef.UnlockScore)
 	}
-	DebugPrintScaled(screen, trailStatus, 120, trailY+16)
+	DrawText(screen, trailStatus, 120, trailY+16)
 
 	// Total score.
-	DebugPrintScaled(screen,
+	DrawText(screen,
 		fmt.Sprintf("Total Score: %d", save.TotalScore),
 		ScreenWidth/2-55, ScreenHeight-60)
 
-	DebugPrintScaled(screen, "L/R browse  U/D section  Esc back", 50, ScreenHeight-30)
+	DrawText(screen, "L/R browse  U/D section  Esc back", 50, ScreenHeight-30)
 }
 
 func drawStatBar(screen *ebiten.Image, label string, value, maxVal float64, x, y int) {
-	DebugPrintScaled(screen, label+":", x, y)
+	DrawText(screen, label+":", x, y)
 	barX := float64(x + 35)
 	barW := 100.0
 	DrawRect(screen, barX, float64(y+2), barW, 8, color.RGBA{0x33, 0x33, 0x33, 0xFF})

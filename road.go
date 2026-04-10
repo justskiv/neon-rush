@@ -30,11 +30,13 @@ type CurveSegment struct {
 
 // RoadCurve manages procedurally generated road turns.
 type RoadCurve struct {
-	segments []CurveSegment
-	distance float64
-	segIdx   int // index of current or next segment for O(1) lookup
-	rng      *rand.Rand
-	lastTick int // tickCount at last generation call
+	segments    []CurveSegment
+	distance    float64
+	segIdx      int // index of current or next segment for O(1) lookup
+	rng         *rand.Rand
+	lastTick    int // tickCount at last generation call
+	JustEntered bool
+	prevSegIdx  int
 }
 
 // NewRoadCurve creates a curve system with a random seed.
@@ -48,6 +50,7 @@ func NewRoadCurve() *RoadCurve {
 func (rc *RoadCurve) Update(speed float64, tickCount int) {
 	rc.distance += speed
 	rc.lastTick = tickCount
+	rc.JustEntered = false
 
 	// Advance segment index past completed segments.
 	for rc.segIdx < len(rc.segments) {
@@ -56,6 +59,13 @@ func (rc *RoadCurve) Update(speed float64, tickCount int) {
 			break
 		}
 		rc.segIdx++
+	}
+	if rc.segIdx != rc.prevSegIdx && rc.segIdx < len(rc.segments) {
+		seg := &rc.segments[rc.segIdx]
+		if seg.Amplitude != 0 {
+			rc.JustEntered = true
+		}
+		rc.prevSegIdx = rc.segIdx
 	}
 
 	// Prune old segments (keep 2 behind for OffsetAt lookback).
